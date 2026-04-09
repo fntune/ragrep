@@ -1,0 +1,94 @@
+[project]
+name = "ragrep"
+version = "0.1.0"
+description = "Hybrid FAISS + BM25 RAG pipeline with multi-source ingestion and a Python SDK"
+requires-python = ">=3.12"
+
+# Base install: CLI client only (talks to server, no heavy deps)
+dependencies = []
+
+[project.optional-dependencies]
+# Full local pipeline: embedding, indexing, retrieval, generation
+full = [
+    "voyageai>=0.3.0",
+    "sentence-transformers>=2.7.0",
+    "transformers>=4.51.0",
+    "torch>=2.5.0",
+    "faiss-cpu>=1.9.0",
+    "rank-bm25>=0.2.2",
+    "google-genai>=1.0.0",
+    "httpx>=0.27.0",
+    "openai>=1.0.0",
+]
+serve = [
+    "ragrep[full]",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "google-cloud-storage>=2.18.0",
+]
+dev = [
+    "ragrep[full]",
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.11.0",
+]
+scrape = [
+    "slack-sdk>=3.33.0",
+    "aiohttp>=3.9.0",
+    "google-auth>=2.48.0",
+    "google-api-python-client>=2.190.0",
+]
+extract = [
+    "google-genai>=1.0.0",
+    "pypdf>=4.0.0",
+    "python-docx>=1.0.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=1.0.0",
+]
+
+[project.scripts]
+ragrep = "ragrep.cli:grep"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ragrep"]
+
+[tool.uv]
+python-preference = "only-system"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+fix = true
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "S", "RUF"]
+ignore = [
+    "S101",   # assert
+    "E501",   # line too long
+    "B006",   # mutable default arg
+    "B008",   # function call in default arg
+    "S301",   # pickle
+    "S311",   # random
+]
+
+[tool.ruff.format]
+preview = true
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+]

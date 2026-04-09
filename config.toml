@@ -1,0 +1,64 @@
+[data]
+raw_dir = "data/raw"
+index_dir = "data/index"
+
+[ingest]
+batch_size = 32
+max_chunk_tokens = 512
+chunk_overlap_tokens = 64
+
+[embedding]
+provider = "voyage"
+model_name = "voyage-code-3"
+# device = "mps"  # only for sentence-transformers provider
+
+[reranker]
+provider = "voyage"
+model_name = "rerank-2.5"
+# device = "mps"  # only for sentence-transformers provider
+
+[retrieval]
+top_k_dense = 20
+top_k_bm25 = 20
+top_k_rerank = 5
+rrf_k = 60
+
+[generation]
+model_name = "gemma3:4b"
+ollama_url = "http://localhost:11434"
+temperature = 0.3
+max_tokens = 1024
+
+[scrape.slack]
+date_cutoff = "2024-01-01"
+include_bots = false
+include_private = false
+fetch_pins = true
+fetch_bookmarks = true
+fetch_files = true
+# channel_allowlist = []  # empty = all channels
+# channel_denylist = []
+
+[scrape.atlassian]
+# confluence_spaces = []  # empty = all non-personal
+# jira_projects = []      # empty = all
+
+[scrape.gdrive]
+# uses gcloud auth application-default credentials
+
+[scrape.git]
+repos = ["../*"]           # glob of local repo paths to scrape
+# skip_repos = []          # repo names to exclude
+# exclude_diff_patterns = []  # regex patterns to skip in diffs
+# exclude_authors = []     # author names to exclude
+since = "2024-01-01"
+
+[scrape.code]
+repos = ["../*"]           # glob of local repo paths to scrape source files from
+# skip_repos = []
+
+[scrape.bitbucket]
+# workspace = "your-workspace"  # required — your Bitbucket workspace slug
+# repos = []  # empty = all repos in workspace
+states = ["MERGED", "OPEN", "DECLINED"]
+since = "2024-01-01"
