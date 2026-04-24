@@ -99,6 +99,14 @@ class _AdaptiveThrottle:
 
 _BATCH_POLL_INTERVAL = 60.0
 _BATCH_POLL_TIMEOUT = 86400.0
+_VOYAGE_BASE = "https://api.voyageai.com/v1"
+
+
+class _RateLimit(Exception):
+    """Raised when Voyage API returns 429."""
+
+    def __init__(self, retry_after: float | None = None):
+        self.retry_after = retry_after
 
 
 def _write_jsonl(rows: list[dict]) -> Path:
@@ -149,12 +157,29 @@ class VoyageEmbedder:
     _MAX_API_BATCH = 16
 
     def __init__(self, model_name: str = "voyage-code-3"):
-        import voyageai
-
-        self.client = voyageai.Client(max_retries=0)
+        self._api_key = os.environ.get("VOYAGE_API_KEY", "")
         self.model = model_name
         self.dim = 1024
         log.info("Voyage embedder ready (model=%s, dim=%d)", model_name, self.dim)
+
+    def _call_voyage_embed(self, texts: list[str], input_type: str) -> list[list[float]]:
+        import httpx
+
+        resp = httpx.post(
+            f"{_VOYAGE_BASE}/embeddings",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            json={"model": self.model, "input": texts, "input_type": input_type},
+            timeout=120,
+        )
+        if resp.status_code == 429:
+            try:
+                retry_after: float | None = float(resp.headers.get("retry-after") or 0) or None
+            except (TypeError, ValueError):
+                retry_after = None
+            raise _RateLimit(retry_after)
+        resp.raise_for_status()
+        data = sorted(resp.json()["data"], key=lambda x: x["index"])
+        return [item["embedding"] for item in data]
 
     def embed_documents(
         self,
@@ -167,8 +192,6 @@ class VoyageEmbedder:
         Checkpoints progress to disk every 500 batches. If checkpoint_path is
         set and a checkpoint exists for the same total, resumes from there.
         """
-        from voyageai.error import RateLimitError
-
         total = len(texts)
         api_batch = min(batch_size, self._MAX_API_BATCH)
 
@@ -213,27 +236,18 @@ class VoyageEmbedder:
 
             for attempt in range(1, 6):
                 try:
-                    result = self.client.embed(batch, model=self.model, input_type="document")
-                    all_emb.extend(result.embeddings)
+                    all_emb.extend(self._call_voyage_embed(batch, "document"))
                     throttle.on_success()
                     break
-                except RateLimitError as e:
+                except _RateLimit as exc:
                     if attempt >= 5:
                         _notify(f"FAILED at {len(all_emb)}/{total}: exhausted retries")
-                        # Save checkpoint before crashing
                         self._save_checkpoint(checkpoint_path, all_emb, total)
-                        raise
-                    retry_after = None
-                    try:
-                        ra = e.headers.get("retry-after")
-                        if ra:
-                            retry_after = float(ra)
-                    except (TypeError, ValueError, AttributeError):
-                        pass
-                    throttle.on_rate_limit(retry_after)
+                        raise RuntimeError("Voyage rate limit exhausted after 5 attempts") from exc
+                    throttle.on_rate_limit(exc.retry_after)
                     log.warning(
                         "Rate limited, waiting %.0fs (attempt %d/5, retry-after=%s)",
-                        throttle.delay, attempt, retry_after,
+                        throttle.delay, attempt, exc.retry_after,
                     )
                     time.sleep(throttle.delay)
                 except Exception as e:
@@ -293,8 +307,9 @@ class VoyageEmbedder:
 
     def embed_query(self, query: str) -> np.ndarray:
         """Embed a single query."""
-        result = self.client.embed([query], model=self.model, input_type="query")
-        return np.array(result.embeddings[0], dtype=np.float32).reshape(1, -1)
+        return np.array(
+            self._call_voyage_embed([query], "query")[0], dtype=np.float32,
+        ).reshape(1, -1)
 
     def submit_batch(self, texts: list[str]) -> dict:
         """Submit texts to Voyage Batch API. Returns handle for collect_batch()."""
@@ -303,9 +318,7 @@ class VoyageEmbedder:
         total = len(texts)
         log.info("Voyage batch: submitting %d texts", total)
 
-        api_key = os.environ.get("VOYAGE_API_KEY", "")
-        base = "https://api.voyageai.com/v1"
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
 
         rows = [
             {"custom_id": str(i), "body": {"input": [text]}}
@@ -316,7 +329,7 @@ class VoyageEmbedder:
         with httpx.Client(timeout=httpx.Timeout(300, connect=30)) as client:
             with open(jsonl_path, "rb") as f:
                 resp = client.post(
-                    f"{base}/files", headers=headers,
+                    f"{_VOYAGE_BASE}/files", headers=headers,
                     files={"file": ("batch.jsonl", f, "application/jsonl")},
                     data={"purpose": "batch"},
                 )
@@ -326,7 +339,7 @@ class VoyageEmbedder:
         log.info("Voyage batch: uploaded file %s", file_id)
 
         resp = httpx.post(
-            f"{base}/batches", headers=headers,
+            f"{_VOYAGE_BASE}/batches", headers=headers,
             json={
                 "input_file_id": file_id,
                 "endpoint": "/v1/embeddings",
@@ -340,7 +353,7 @@ class VoyageEmbedder:
         log.info("Voyage batch: created %s", batch_id)
         _notify(f"Voyage batch submitted: {batch_id}")
 
-        return {"batch_id": batch_id, "total": total, "base": base, "headers": headers}
+        return {"batch_id": batch_id, "total": total}
 
     def collect_batch(self, handle: dict) -> np.ndarray:
         """Poll and download results from a submitted Voyage batch."""
@@ -348,11 +361,10 @@ class VoyageEmbedder:
 
         batch_id = handle["batch_id"]
         total = handle["total"]
-        base = handle["base"]
-        headers = handle["headers"]
+        headers = {"Authorization": f"Bearer {self._api_key}"}
 
         def poll() -> str:
-            r = httpx.get(f"{base}/batches/{batch_id}", headers=headers, timeout=30)
+            r = httpx.get(f"{_VOYAGE_BASE}/batches/{batch_id}", headers=headers, timeout=30)
             r.raise_for_status()
             data = r.json()
             status = data["status"]
@@ -362,12 +374,12 @@ class VoyageEmbedder:
 
         _poll_until_done(poll, label=f"Voyage batch {batch_id}")
 
-        r = httpx.get(f"{base}/batches/{batch_id}", headers=headers, timeout=30)
+        r = httpx.get(f"{_VOYAGE_BASE}/batches/{batch_id}", headers=headers, timeout=30)
         r.raise_for_status()
         output_file_id = r.json()["output_file_id"]
 
         r = httpx.get(
-            f"{base}/files/{output_file_id}/content", headers=headers,
+            f"{_VOYAGE_BASE}/files/{output_file_id}/content", headers=headers,
             timeout=120, follow_redirects=True,
         )
         r.raise_for_status()

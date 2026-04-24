@@ -33,7 +33,6 @@ Issues = "https://github.com/fntune/ragrep/issues"
 [project.optional-dependencies]
 # Full local pipeline: embedding, indexing, retrieval, generation
 full = [
-    "voyageai>=0.3.0",
     "sentence-transformers>=2.7.0",
     "transformers>=4.51.0",
     "torch>=2.5.0",

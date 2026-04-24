@@ -1,6 +1,7 @@
 """Reranking providers: Voyage AI (API) and sentence-transformers CrossEncoder (local)."""
 
 import logging
+import os
 
 from ragrep.models import SearchResult
 
@@ -33,9 +34,7 @@ class VoyageReranker:
     """Voyage AI API reranker."""
 
     def __init__(self, model_name: str = "rerank-2.5"):
-        import voyageai
-
-        self.client = voyageai.Client()
+        self._api_key = os.environ.get("VOYAGE_API_KEY", "")
         self.model = model_name
         log.info("Voyage reranker ready (model=%s)", model_name)
 
@@ -44,13 +43,21 @@ class VoyageReranker:
         if not candidates:
             return []
 
+        import httpx
+
         docs = [c.content for c in candidates]
-        result = self.client.rerank(query, docs, model=self.model, top_k=top_k)
+        resp = httpx.post(
+            "https://api.voyageai.com/v1/rerank",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            json={"model": self.model, "query": query, "documents": docs, "top_k": top_k},
+            timeout=60,
+        )
+        resp.raise_for_status()
 
         reranked: list[SearchResult] = []
-        for r in result.results:
-            candidate = candidates[r.index]
-            candidate.rerank_score = r.relevance_score
+        for r in resp.json()["data"]:
+            candidate = candidates[r["index"]]
+            candidate.rerank_score = r["relevance_score"]
             reranked.append(candidate)
         return reranked
 
