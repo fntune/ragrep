@@ -266,8 +266,9 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
 def main() -> None:
     """Pipeline CLI: ragrep scrape|ingest|query|stats|eval|inspect."""
-    parser = argparse.ArgumentParser(prog="ragrep", description="RAG pipeline for Aidaptive internal knowledge")
-    parser.add_argument("--config", type=Path, default=Path("config.toml"))
+    parser = argparse.ArgumentParser(prog="ragrep", description="Hybrid FAISS + BM25 RAG pipeline")
+    parser.add_argument("--config", type=Path, default=None,
+                        help="Path to config.toml (default: search CWD, RAGREP_CONFIG, ~/.config/ragrep/)")
     parser.add_argument("--log-level", default="INFO")
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -315,9 +316,6 @@ def main() -> None:
         "inspect": cmd_inspect,
     }
     commands[args.command](args)
-
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -637,16 +635,9 @@ def grep() -> None:
     import sys
     import time
 
-    os.chdir(_PROJECT_ROOT)
+    from ragrep.config import load_env_files
 
-    # Load .env for API keys (VOYAGE_API_KEY etc.)
-    env_file = _PROJECT_ROOT / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, val = line.partition("=")
-                os.environ.setdefault(key.strip(), val.strip())
+    load_env_files()
 
     parser = argparse.ArgumentParser(
         prog="ragrep",
@@ -670,7 +661,8 @@ def grep() -> None:
                         help="Include metadata in JSON output")
     parser.add_argument("--server", default=os.environ.get("RAGREP_SERVER"),
                         help="Server URL (set RAGREP_SERVER env var or pass --server). Omit for local mode.")
-    parser.add_argument("--config", type=Path, default=Path("config.toml"))
+    parser.add_argument("--config", type=Path, default=None,
+                        help="Path to config.toml (default: search CWD, RAGREP_CONFIG, ~/.config/ragrep/)")
 
     args = parser.parse_args()
     setup_logging("WARN")

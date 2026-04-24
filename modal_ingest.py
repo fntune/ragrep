@@ -4,21 +4,31 @@ When using Voyage AI provider (default): runs on CPU, embeds via API.
 When using sentence-transformers provider: runs on GPU (L4).
 
 Setup (one-time):
-    pip install modal
-    modal token new
+    pip install modal && modal token new
+    modal volume create ragrep-index                                     # or: RAGREP_MODAL_VOLUME=my-vol
+    modal secret create voyage-api-key VOYAGE_API_KEY=pa-...             # or: RAGREP_VOYAGE_SECRET=my-secret
 
 Usage:
-    PYENV_VERSION=3.13.7 modal run --detach modal_ingest.py
+    modal run --detach modal_ingest.py
 
 Download index:
-    PYENV_VERSION=3.13.7 modal volume get ragrep-index index data/index
+    modal volume get ragrep-index index data/index
+
+Customize Modal names via env vars before running:
+    RAGREP_MODAL_VOLUME   Modal volume for the output index (default: ragrep-index)
+    RAGREP_VOYAGE_SECRET  Modal secret holding VOYAGE_API_KEY (default: voyage-api-key)
 """
+
+import os
 
 import modal
 
+_VOLUME_NAME = os.environ.get("RAGREP_MODAL_VOLUME", "ragrep-index")
+_VOYAGE_SECRET = os.environ.get("RAGREP_VOYAGE_SECRET", "voyage-api-key")
+
 app = modal.App("ragrep-ingest")
 
-vol = modal.Volume.from_name("ragrep-index", create_if_missing=True)
+vol = modal.Volume.from_name(_VOLUME_NAME, create_if_missing=True)
 
 # Voyage provider image (CPU, no torch needed for embedding)
 voyage_image = (
@@ -58,7 +68,7 @@ st_image = (
     image=voyage_image,
     timeout=3600,
     volumes={"/vol": vol},
-    secrets=[modal.Secret.from_name("voyage-api-key")],
+    secrets=[modal.Secret.from_name(_VOYAGE_SECRET)],
 )
 def ingest_voyage() -> None:
     """Run ingestion with Voyage AI embeddings (CPU, API-based)."""

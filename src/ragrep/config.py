@@ -1,5 +1,6 @@
 """Configuration loading from TOML."""
 
+import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -95,11 +96,41 @@ class Config:
         return Path(self.data.index_dir)
 
 
-def load_config(path: Path = Path("config.toml")) -> Config:
-    """Load config from TOML file."""
+def load_env_files() -> None:
+    """Populate os.environ from .env files. Searches CWD then ~/.config/ragrep/.env. Existing vars win."""
+    candidates = [Path.cwd() / ".env", Path.home() / ".config" / "ragrep" / ".env"]
+    for env_file in candidates:
+        if not env_file.exists():
+            continue
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                os.environ.setdefault(key.strip(), val.strip())
+
+
+def find_config_path(explicit: Path | None = None) -> Path | None:
+    """Resolve config.toml location: explicit arg, RAGREP_CONFIG env, ./config.toml, ~/.config/ragrep/config.toml."""
+    if explicit is not None:
+        return explicit
+    env = os.environ.get("RAGREP_CONFIG")
+    if env:
+        return Path(env)
+    cwd_path = Path("config.toml")
+    if cwd_path.exists():
+        return cwd_path
+    xdg_path = Path.home() / ".config" / "ragrep" / "config.toml"
+    if xdg_path.exists():
+        return xdg_path
+    return None
+
+
+def load_config(path: Path | None = None) -> Config:
+    """Load config from TOML file. Searches RAGREP_CONFIG, CWD, ~/.config/ragrep/ if path not given."""
+    resolved = find_config_path(path)
     raw: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
+    if resolved is not None and resolved.exists():
+        with open(resolved, "rb") as f:
             raw = tomllib.load(f)
 
     scrape_raw = raw.get("scrape", {})

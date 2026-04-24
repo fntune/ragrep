@@ -2,10 +2,29 @@
 name = "ragrep"
 version = "0.1.0"
 description = "Hybrid FAISS + BM25 RAG pipeline with multi-source ingestion and a Python SDK"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sourabh Sharma", email = "sour4bh@pm.me" }]
+keywords = ["rag", "search", "embeddings", "faiss", "bm25", "retrieval", "voyage"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing :: Indexing",
+]
 requires-python = ">=3.12"
 
 # Base install: CLI client only (talks to server, no heavy deps)
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/fntune/ragrep"
+Repository = "https://github.com/fntune/ragrep"
+Issues = "https://github.com/fntune/ragrep/issues"
 
 [project.optional-dependencies]
 # Full local pipeline: embedding, indexing, retrieval, generation

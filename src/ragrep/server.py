@@ -20,23 +20,22 @@ _CONFIG = None
 
 def _resolve_index_dir() -> Path:
     """Find or download the index directory."""
-    # 1. Check local data/index/ relative to project root
-    project_root = Path(__file__).resolve().parent.parent.parent
-    local_dir = project_root / "data" / "index"
-    if (local_dir / "faiss.index").exists():
-        log.info("Using local index at %s", local_dir)
-        return local_dir
-
-    # 2. Check RAGREP_INDEX_DIR env var
+    # 1. RAGREP_INDEX_DIR env var
     env_dir = os.environ.get("RAGREP_INDEX_DIR")
     if env_dir and (Path(env_dir) / "faiss.index").exists():
         log.info("Using index from RAGREP_INDEX_DIR=%s", env_dir)
         return Path(env_dir)
 
+    # 2. CWD/data/index (when serving from a project clone)
+    cwd_dir = Path.cwd() / "data" / "index"
+    if (cwd_dir / "faiss.index").exists():
+        log.info("Using local index at %s", cwd_dir)
+        return cwd_dir
+
     # 3. Download from GCS
     bucket_name = os.environ.get("RAGREP_GCS_BUCKET")
     if not bucket_name:
-        raise RuntimeError("No index found locally or via RAGREP_INDEX_DIR, and RAGREP_GCS_BUCKET is not set")
+        raise RuntimeError("No index found via RAGREP_INDEX_DIR or CWD/data/index/, and RAGREP_GCS_BUCKET is not set")
     tmp_dir = Path("/tmp/ragrep-index")  # noqa: S108
     if (tmp_dir / "faiss.index").exists():
         log.info("Using cached GCS index at %s", tmp_dir)
@@ -60,22 +59,10 @@ def _resolve_index_dir() -> Path:
 
 
 def _load_config():
-    """Load ragrep config, falling back to defaults."""
-    project_root = Path(__file__).resolve().parent.parent.parent
-    config_path = project_root / "config.toml"
-    if not config_path.exists():
-        # Minimal config for server mode — use defaults
-        config_path = None
-
+    """Load ragrep config; load_config handles RAGREP_CONFIG / CWD / XDG search."""
     from ragrep.config import load_config
 
-    if config_path:
-        config = load_config(config_path)
-    else:
-        config = load_config()
-
-    # Override index_dir with resolved path
-    return config
+    return load_config()
 
 
 @asynccontextmanager
@@ -89,15 +76,10 @@ async def lifespan(app: FastAPI):
         datefmt="%H:%M:%S",
     )
 
-    # Load .env if present
-    project_root = Path(__file__).resolve().parent.parent.parent
-    env_file = project_root / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, val = line.partition("=")
-                os.environ.setdefault(key.strip(), val.strip())
+    # Load .env if present (CWD then ~/.config/ragrep/)
+    from ragrep.config import load_env_files
+
+    load_env_files()
 
     _INDEX_DIR = _resolve_index_dir()
     _CONFIG = _load_config()

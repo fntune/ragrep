@@ -3,7 +3,7 @@
 from ragrep.models import SearchResult
 
 SYSTEM_PROMPT = (
-    "You are an internal knowledge assistant for Aidaptive. "
+    "You are a knowledge assistant. "
     "Answer questions using the provided context documents. "
     "If the context doesn't contain enough information to answer fully, say so. "
     "Always cite your sources using [Source: title] format."

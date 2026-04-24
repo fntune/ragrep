@@ -180,9 +180,14 @@ Set `RAGREP_GCS_BUCKET` to auto-download the index from GCS at server startup.
 
 ```bash
 pip install modal && modal token new
+modal volume create ragrep-index
+modal secret create voyage-api-key VOYAGE_API_KEY=pa-...
+
 modal run --detach modal_ingest.py
 modal volume get ragrep-index index data/index
 ```
+
+Override the volume / secret names via `RAGREP_MODAL_VOLUME` and `RAGREP_VOYAGE_SECRET` env vars before `modal run`.
 
 Voyage embedder has adaptive rate limiting and checkpoint resumability. Set `NTFY_TOPIC` for hourly progress notifications via ntfy.sh.
 

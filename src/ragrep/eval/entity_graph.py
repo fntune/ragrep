@@ -1,8 +1,8 @@
 """Cross-source entity graph for evaluation ground truth.
 
-Extracts entities (Jira IDs, service names) from chunks and builds
-a graph of which entities appear across multiple sources. Cross-source
-clusters serve as automatic ground truth for retrieval evaluation.
+Extracts Jira IDs from chunks and builds a graph of which entities appear
+across multiple sources. Cross-source clusters serve as automatic ground
+truth for retrieval evaluation.
 """
 
 import re
@@ -10,22 +10,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from ragrep.models import Chunk
-
-# Service/component names relevant to Aidaptive codebase
-SERVICE_PATTERNS: dict[str, re.Pattern[str]] = {
-    "miner": re.compile(r"\bminer\b", re.IGNORECASE),
-    "trampoline": re.compile(r"\btrampoline\b", re.IGNORECASE),
-    "syncer": re.compile(r"\bsyncer\b", re.IGNORECASE),
-    "entity_store": re.compile(r"\bentity.?store\b", re.IGNORECASE),
-    "entity_processor": re.compile(r"\bentity.?processor\b", re.IGNORECASE),
-    "flagr": re.compile(r"\bflagr\b", re.IGNORECASE),
-    "airflow": re.compile(r"\bairflow\b", re.IGNORECASE),
-    "openclaw": re.compile(r"\bopenclaw\b", re.IGNORECASE),
-    "vrm_operator": re.compile(r"\bvrm[- ]operator\b", re.IGNORECASE),
-    "hero_image": re.compile(r"\bhero.?image\b", re.IGNORECASE),
-    "sales_booster": re.compile(r"\bsales.?booster\b", re.IGNORECASE),
-    "dynamic_pricing": re.compile(r"\bdynamic.?pricing\b", re.IGNORECASE),
-}
 
 # Regex for Jira ticket IDs — exclude common false positives
 _JIRA_RE = re.compile(r"\b([A-Z]{2,10}-\d{1,6})\b")
@@ -36,8 +20,8 @@ _JIRA_EXCLUDE = {"UTF-8", "ISO-8859", "US-ASCII", "X-HTTP", "X-API", "X-CSRF"}
 class Entity:
     """An entity that appears across chunks and sources."""
 
-    etype: str  # "jira" or "service"
-    eid: str  # "PLAT-984" or "miner"
+    etype: str  # "jira"
+    eid: str  # "PLAT-984"
     # source → list of chunk indices into the chunks array
     chunks_by_source: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
 
@@ -62,7 +46,7 @@ class Entity:
 class EvalCase:
     """A retrieval evaluation case derived from a cross-source entity."""
 
-    entity_key: str  # "jira:PLAT-984" or "service:miner"
+    entity_key: str  # "jira:PLAT-984"
     query: str
     expected_sources: set[str]
     ground_truth_indices: set[int]  # chunk indices that should appear
@@ -92,14 +76,6 @@ class EntityGraph:
                 if key not in entities:
                     entities[key] = Entity(etype="jira", eid=jid)
                 entities[key].chunks_by_source[chunk.source].append(i)
-
-            # Service names
-            for svc, pattern in SERVICE_PATTERNS.items():
-                if pattern.search(text):
-                    key = f"service:{svc}"
-                    if key not in entities:
-                        entities[key] = Entity(etype="service", eid=svc)
-                    entities[key].chunks_by_source[chunk.source].append(i)
 
         return cls(entities=entities, chunks=chunks)
 
@@ -132,10 +108,6 @@ class EntityGraph:
 
     def _make_query(self, entity: Entity) -> str | None:
         """Generate a natural language query for an entity."""
-        if entity.etype == "service":
-            name = entity.eid.replace("_", " ")
-            return f"How does the {name} work?"
-
         if entity.etype == "jira":
             # Try to find the Jira ticket's title from an atlassian chunk
             for idx in entity.chunks_by_source.get("atlassian", []):
