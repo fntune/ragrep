@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ragrep — hybrid retrieval, self-hosted</title>
+  <meta name="description" content="ripgrep for your team's knowledge base. Hybrid retrieval over Slack, Confluence, Drive, Git, and files. Self-hosted, single command.">
+  <meta name="keywords" content="rag, retrieval-augmented generation, hybrid search, semantic search, faiss, bm25, knowledge base, slack search, confluence search, self-hosted">
+
+  <meta property="og:title" content="ragrep — hybrid retrieval, self-hosted">
+  <meta property="og:description" content="ripgrep for your team's knowledge base. Hybrid retrieval, self-hosted, single command.">
+  <meta property="og:url" content="https://ragrep.cc">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="ragrep — hybrid retrieval, self-hosted">
+  <meta name="twitter:description" content="ripgrep for your team's knowledge base. Hybrid retrieval, self-hosted, single command.">
+
+  <link rel="canonical" href="https://ragrep.cc">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      background: #0e1116;
+      color: #d4d4d4;
+      line-height: 1.55;
+      padding: 4rem 1.25rem;
+      max-width: 720px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+    h1 { font-size: 2.5rem; color: #fff; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+    .tagline { color: #8b949e; font-size: 1.05rem; margin-bottom: 2rem; }
+    .tagline strong { color: #c9d1d9; font-weight: normal; }
+    pre {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 0.95rem;
+      position: relative;
+    }
+    code { color: #79c0ff; }
+    pre code { color: #d4d4d4; display: block; }
+    pre code .cmt { color: #6e7681; }
+    .copy {
+      cursor: pointer;
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      color: #8b949e;
+      font-size: 0.75rem;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 0.25rem 0.6rem;
+      font-family: inherit;
+    }
+    .copy:hover { color: #d4d4d4; border-color: #8b949e; }
+    .copy.copied { color: #56d364; border-color: #56d364; }
+    h2 { font-size: 0.95rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.08em; margin: 2.5rem 0 0.75rem; font-weight: normal; }
+    .why p { margin-bottom: 0.75rem; color: #c9d1d9; font-size: 0.95rem; }
+    .why strong { color: #fff; font-weight: 600; }
+    .links { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #21262d; font-size: 0.85rem; color: #6e7681; }
+    .links a { color: #79c0ff; text-decoration: none; margin-right: 1.25rem; }
+    .links a:hover { text-decoration: underline; }
+    .footer { margin-top: 3rem; color: #6e7681; font-size: 0.8rem; }
+    @media (max-width: 480px) {
+      body { padding: 2rem 1rem; }
+      h1 { font-size: 1.8rem; }
+      pre { font-size: 0.8rem; padding: 0.75rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <h1>ragrep</h1>
+  <p class="tagline"><strong>ripgrep for your team's knowledge base.</strong><br>Hybrid retrieval, self-hosted, single command.</p>
+
+  <pre><button class="copy" onclick="copyInstall(this)">copy</button><code>curl -fsSL https://ragrep.cc/install.sh | sh</code></pre>
+
+  <h2>Why</h2>
+  <div class="why">
+    <p><strong>Hybrid retrieval, not just embeddings.</strong> FAISS&nbsp;+&nbsp;BM25&nbsp;+&nbsp;reranking, fused with RRF. Recalls cross-source content that pure dense or pure sparse misses.</p>
+    <p><strong>Self-hosted, no lock-in.</strong> Your data stays on your machine. The index is three files you can <code>cp</code> or version-control.</p>
+    <p><strong>Multi-source ingest.</strong> Slack, Confluence, Jira, Drive, Git, Bitbucket, local files — out of the box. Content-hash dedup means re-indexing only embeds what changed.</p>
+  </div>
+
+  <h2>Try it</h2>
+  <pre><code><span class="cmt"># after install</span>
+ragrep "how does the auth flow work"
+ragrep "deploy" -m grep                 <span class="cmt"># exact substring</span>
+ragrep "incident" -s slack --after 2w   <span class="cmt"># filter source + date</span>
+ragrep "auth" --json | jq               <span class="cmt"># for agents/scripts</span></code></pre>
+
+  <div class="links">
+    <a href="https://github.com/fntune/ragrep">GitHub →</a>
+    <a href="https://github.com/fntune/ragrep#install">Install docs →</a>
+    <a href="/install.sh">View installer source →</a>
+    <a href="https://github.com/fntune/ragrep/issues">Issues →</a>
+  </div>
+
+  <p class="footer">MIT licensed.</p>
+
+  <script>
+    function copyInstall(btn) {
+      navigator.clipboard.writeText("curl -fsSL https://ragrep.cc/install.sh | sh").then(() => {
+        const orig = btn.textContent;
+        btn.textContent = "copied";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1400);
+      });
+    }
+  </script>
+</body>
+</html>

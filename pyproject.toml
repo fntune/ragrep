@@ -1,12 +1,16 @@
 [project]
 name = "ragrep"
 version = "0.1.0"
-description = "Hybrid FAISS + BM25 RAG pipeline with multi-source ingestion and a Python SDK"
+description = "ripgrep for your team's knowledge base — hybrid retrieval over Slack, Confluence, Drive, Git, and files"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Sourabh Sharma", email = "sour4bh@pm.me" }]
-keywords = ["rag", "search", "embeddings", "faiss", "bm25", "retrieval", "voyage"]
+keywords = [
+    "rag", "retrieval", "search", "hybrid-search", "semantic-search",
+    "embeddings", "faiss", "bm25", "reranker", "voyage",
+    "knowledge-base", "self-hosted", "cli",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
