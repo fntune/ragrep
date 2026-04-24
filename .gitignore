@@ -1,0 +1,35 @@
+# Python
+*.py[cod]
+__pycache__/
+.venv/
+*.egg-info/
+
+# Data (raw data is large, index is generated)
+data/
+*.pkl
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+*.egg
+
+# Logs
+*.log
+
+# uv
+uv.lock
+
+# Local-only
+CLAUDE.md
+eda.ipynb
+cloudbuild.yaml
