@@ -629,11 +629,63 @@ def _query_server(server_url: str, args: argparse.Namespace, filters: dict[str, 
                 print(f"      {item['snippet']}")
 
 
+_SPLASH_LOGO = (
+    "██████╗  █████╗  ██████╗ ██████╗ ███████╗██████╗ \n"
+    "██╔══██╗██╔══██╗██╔════╝ ██╔══██╗██╔════╝██╔══██╗\n"
+    "██████╔╝███████║██║  ███╗██████╔╝█████╗  ██████╔╝\n"
+    "██╔══██╗██╔══██║██║   ██║██╔══██╗██╔══╝  ██╔═══╝ \n"
+    "██║  ██║██║  ██║╚██████╔╝██║  ██║███████╗██║     \n"
+    "╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝     "
+)
+
+
+def _print_splash() -> None:
+    """First-run welcome screen: ASCII logo + setup guidance.
+
+    Shown when ragrep is invoked with no args, or when the local environment
+    has no index and no raw data to search (nothing to do yet).
+    """
+    import os
+    import sys
+
+    use_color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+    def c(text: str, code: str) -> str:
+        return f"\033[{code}m{text}\033[0m" if use_color else text
+
+    print()
+    for line in _SPLASH_LOGO.splitlines():
+        print("  " + c(line, "38;5;81"))
+    print()
+    print("  " + c("ripgrep for your team's knowledge base.", "1"))
+    print("  " + c("hybrid retrieval · self-hosted · single command.", "2"))
+    print()
+    print("  " + c("Get started", "1;4"))
+    print()
+    print("  " + c("Point at a running server:", "2"))
+    print('    export RAGREP_SERVER=http://your-server:8321')
+    print('    ragrep "your question"')
+    print()
+    print("  " + c("Or build a local index:", "2"))
+    print("    git clone https://github.com/fntune/ragrep && cd ragrep")
+    print("    cp .env.example .env" + c("   # add VOYAGE_API_KEY, SLACK_TOKEN, etc.", "2"))
+    print("    make install && make scrape && make ingest")
+    print('    ragrep "your question"')
+    print()
+    print(f"  {c('Docs  ', '2')} https://ragrep.cc")
+    print(f"  {c('Issues', '2')} https://github.com/fntune/ragrep/issues")
+    print()
+
+
 def grep() -> None:
     """ragrep <term> [-n 5] [-s git] [-m hybrid] [--full]"""
     import os
     import sys
     import time
+
+    if len(sys.argv) == 1:
+        _print_splash()
+        return
 
     from ragrep.config import load_env_files
 
@@ -696,7 +748,13 @@ def grep() -> None:
     config = load_config(args.config)
     mode = args.mode
 
-    if mode != "grep" and not index_exists(config.index_dir):
+    has_index = index_exists(config.index_dir)
+    has_raw = config.raw_dir.exists() and any(config.raw_dir.iterdir())
+    if not has_index and not has_raw:
+        _print_splash()
+        return
+
+    if mode != "grep" and not has_index:
         print("No index found. Run 'make ingest' first. Falling back to grep.", file=sys.stderr)
         mode = "grep"
 

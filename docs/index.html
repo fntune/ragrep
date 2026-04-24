@@ -69,6 +69,11 @@
     code { color: #79c0ff; }
     pre code { color: #d4d4d4; display: block; }
     pre code .cmt { color: #6e7681; }
+    .demo code .prompt { color: #56d364; }
+    .demo code .rank   { color: #79c0ff; }
+    .demo code .src    { color: #ffa657; }
+    .demo code .score  { color: #6e7681; font-size: 0.85rem; }
+    .demo code .dim    { color: #8b949e; }
     .copy {
       cursor: pointer;
       position: absolute;
@@ -103,6 +108,22 @@
   <p class="tagline"><strong>ripgrep for your team's knowledge base.</strong><br>Hybrid retrieval, self-hosted, single command.</p>
 
   <pre><button class="copy" onclick="copyInstall(this)">copy</button><code>curl -fsSL https://ragrep.cc/install.sh | sh</code></pre>
+
+  <h2>What it looks like</h2>
+  <pre class="demo"><code><span class="prompt">$</span> ragrep <span style="color:#a5d6ff">"how does the auth flow work"</span>
+<span class="dim">Top 3 results for 'how does the auth flow work'</span>
+
+  <span class="rank">[1]</span> <span class="src">[slack]</span> #eng-platform — "new token rotation"  <span class="score">rerank=0.89</span>
+      <span class="dim">We rotated service-to-service tokens to short-lived JWTs.
+      The auth middleware now validates via the shared signing key...</span>
+
+  <span class="rank">[2]</span> <span class="src">[gdrive]</span> Auth Architecture v2 — design doc   <span class="score">rerank=0.84</span>
+      <span class="dim">OIDC login → IdP → callback with code → exchange for id_token
+      + refresh. Refresh tokens live in an httpOnly cookie...</span>
+
+  <span class="rank">[3]</span> <span class="src">[git]</span> commit: migrate auth middleware to JWT  <span class="score">rerank=0.81</span>
+      <span class="dim">Replaces session-cookie auth with signed JWTs. Rolls out
+      per-service behind a feature flag, fallback to cookies...</span></code></pre>
 
   <h2>Why</h2>
   <div class="why">
