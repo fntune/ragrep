@@ -80,6 +80,13 @@ pub fn run(args: SearchArgs) -> Result<()> {
         bail!("--filter / --after / --before not yet implemented in the Rust port");
     }
 
+    // Hide rayon's first-call thread-pool init (~6ms) behind config + msgpack
+    // load so the search loop measures the steady-state ~2ms instead of ~8ms.
+    std::thread::spawn(|| {
+        use rayon::prelude::*;
+        [0u8; 1].par_iter().for_each(|_| ());
+    });
+
     let cfg = config::load(args.config.as_deref())?;
     let dir = cfg.index_dir();
 
