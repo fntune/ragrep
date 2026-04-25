@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use crate::index::bm25::Bm25;
 use crate::index::flat::Flat;
 use crate::models::Chunk;
+use crate::query::Filters;
 
 pub type Scored = (usize, f32);
 
@@ -16,16 +17,16 @@ pub fn dense(
     query_emb: &[f32],
     chunks: &[Chunk],
     top_k: usize,
-    source_filter: Option<&str>,
+    filt: &Filters<'_>,
 ) -> Vec<Scored> {
-    let fetch_k = if source_filter.is_some() {
-        top_k * 3
-    } else {
-        top_k
-    };
+    let has_filter = filt.source.is_some()
+        || !filt.metadata.is_empty()
+        || filt.after.is_some()
+        || filt.before.is_some();
+    let fetch_k = if has_filter { top_k * 5 } else { top_k };
     flat.search(query_emb, fetch_k)
         .into_iter()
-        .filter(|(idx, _)| source_filter.is_none_or(|s| chunks[*idx as usize].source == s))
+        .filter(|(idx, _)| filt.matches(&chunks[*idx as usize]))
         .take(top_k)
         .map(|(idx, score)| (idx as usize, score))
         .collect()
@@ -36,12 +37,16 @@ pub fn bm25(
     chunks: &[Chunk],
     query: &str,
     top_k: usize,
-    source_filter: Option<&str>,
+    filt: &Filters<'_>,
 ) -> Vec<Scored> {
     let mut scores = bm25.scores(query);
-    if let Some(s) = source_filter {
+    let has_filter = filt.source.is_some()
+        || !filt.metadata.is_empty()
+        || filt.after.is_some()
+        || filt.before.is_some();
+    if has_filter {
         for (i, c) in chunks.iter().enumerate() {
-            if c.source != s {
+            if !filt.matches(c) {
                 scores[i] = 0.0;
             }
         }

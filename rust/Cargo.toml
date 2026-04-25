@@ -26,6 +26,7 @@ bytemuck = "1"
 wide = "0.7"
 rayon = "1"
 sha2 = "0.10"
+time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
 
 # serialization
 serde = { version = "1", features = ["derive"] }

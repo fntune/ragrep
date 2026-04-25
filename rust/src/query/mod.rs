@@ -1,12 +1,37 @@
 //! Public engine API: `grep`, `semantic`, `hybrid`.
 
+pub mod filters;
 pub mod generate;
 pub mod rerank;
 pub mod retrieve;
 
+use std::collections::BTreeMap;
+
 use crate::index::bm25::Bm25;
 use crate::index::flat::Flat;
 use crate::models::{Chunk, SearchResult};
+
+#[derive(Debug, Default, Clone)]
+pub struct Filters<'a> {
+    pub source: Option<&'a str>,
+    pub metadata: BTreeMap<String, String>,
+    pub after: Option<&'a str>,
+    pub before: Option<&'a str>,
+}
+
+impl<'a> Filters<'a> {
+    pub fn matches(&self, chunk: &Chunk) -> bool {
+        if let Some(s) = self.source {
+            if chunk.source != s {
+                return false;
+            }
+        }
+        if !self.metadata.is_empty() || self.after.is_some() || self.before.is_some() {
+            return filters::matches(&chunk.metadata, &self.metadata, self.after, self.before);
+        }
+        true
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Hit {
@@ -23,11 +48,11 @@ pub struct GrepResult {
 
 /// Case-insensitive substring search over chunks. Returns the top `n` matches
 /// plus the total match count. Mirrors `search_grep` in `src/ragrep/search.py`.
-pub fn grep(chunks: &[Chunk], term: &str, source: Option<&str>, n: usize) -> GrepResult {
+pub fn grep(chunks: &[Chunk], term: &str, filt: &Filters<'_>, n: usize) -> GrepResult {
     let needle = term.to_lowercase();
     let filtered = chunks
         .iter()
-        .filter(|c| source.is_none_or(|s| c.source == s))
+        .filter(|c| filt.matches(c))
         .filter(|c| c.content.to_lowercase().contains(&needle));
 
     let mut total = 0usize;
@@ -73,19 +98,21 @@ pub fn semantic(
     chunks: &[Chunk],
     query: &str,
     query_embedding: &[f32],
-    source: Option<&str>,
+    filt: &Filters<'_>,
     n: usize,
 ) -> SemanticResult {
-    let fetch_k = if source.is_some() { n * 3 } else { n };
+    let has_filter = filt.source.is_some()
+        || !filt.metadata.is_empty()
+        || filt.after.is_some()
+        || filt.before.is_some();
+    let fetch_k = if has_filter { n * 5 } else { n };
     let raw = flat.search(query_embedding, fetch_k);
 
     let mut hits = Vec::with_capacity(n);
     for (idx, score) in raw {
         let chunk = &chunks[idx as usize];
-        if let Some(s) = source {
-            if chunk.source != s {
-                continue;
-            }
+        if !filt.matches(chunk) {
+            continue;
         }
         hits.push(Hit {
             rank: hits.len() + 1,
@@ -128,7 +155,7 @@ pub struct HybridOpts<'a> {
     pub rrf_k: usize,
     pub rerank_provider: &'a str,
     pub rerank_model: &'a str,
-    pub source: Option<&'a str>,
+    pub filters: Filters<'a>,
 }
 
 /// Hybrid retrieval: dense + BM25 → RRF fusion → rerank top-`n`.
@@ -141,8 +168,14 @@ pub fn hybrid(
     query_embedding: &[f32],
     opts: HybridOpts<'_>,
 ) -> anyhow::Result<HybridResult> {
-    let dense_hits = retrieve::dense(flat, query_embedding, chunks, opts.top_k_dense, opts.source);
-    let bm25_hits = retrieve::bm25(bm25_idx, chunks, query, opts.top_k_bm25, opts.source);
+    let dense_hits = retrieve::dense(
+        flat,
+        query_embedding,
+        chunks,
+        opts.top_k_dense,
+        &opts.filters,
+    );
+    let bm25_hits = retrieve::bm25(bm25_idx, chunks, query, opts.top_k_bm25, &opts.filters);
     let fused = retrieve::rrf(&dense_hits, &bm25_hits, opts.rrf_k);
 
     let pool_n = opts.rerank_pool.min(fused.len());

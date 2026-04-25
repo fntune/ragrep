@@ -73,10 +73,6 @@ pub struct SearchArgs {
 }
 
 pub fn run(args: SearchArgs) -> Result<()> {
-    if !args.filter.is_empty() || args.after.is_some() || args.before.is_some() {
-        bail!("--filter / --after / --before not yet implemented in the Rust port");
-    }
-
     let wall_start = Instant::now();
 
     if let Some(server) = args.server.as_deref() {
@@ -137,6 +133,16 @@ fn run_proxy(server: &str, args: &SearchArgs) -> Result<()> {
     ];
     if let Some(s) = args.source.as_deref() {
         params.push(("source", s));
+    }
+    let filter_joined = args.filter.join(",");
+    if !filter_joined.is_empty() {
+        params.push(("filter", &filter_joined));
+    }
+    if let Some(a) = args.after.as_deref() {
+        params.push(("after", a));
+    }
+    if let Some(b) = args.before.as_deref() {
+        params.push(("before", b));
     }
 
     let resp = client
@@ -247,7 +253,23 @@ fn run_grep(dir: &std::path::Path, args: &SearchArgs) -> Result<()> {
     }
 
     let chunks = store::load_chunks(dir)?;
-    let result = query::grep(&chunks, &args.term, args.source.as_deref(), args.n);
+    let after = args
+        .after
+        .as_deref()
+        .map(query::filters::parse_date)
+        .transpose()?;
+    let before = args
+        .before
+        .as_deref()
+        .map(query::filters::parse_date)
+        .transpose()?;
+    let filt = query::Filters {
+        source: args.source.as_deref(),
+        metadata: query::filters::parse_filters(&args.filter)?,
+        after: after.as_deref(),
+        before: before.as_deref(),
+    };
+    let result = query::grep(&chunks, &args.term, &filt, args.n);
 
     if args.json {
         print_json(
@@ -288,14 +310,23 @@ fn run_semantic(
         &args.term,
     )?;
 
-    let result = query::semantic(
-        &flat,
-        &chunks,
-        &args.term,
-        &query_emb,
-        args.source.as_deref(),
-        args.n,
-    );
+    let after = args
+        .after
+        .as_deref()
+        .map(query::filters::parse_date)
+        .transpose()?;
+    let before = args
+        .before
+        .as_deref()
+        .map(query::filters::parse_date)
+        .transpose()?;
+    let filt = query::Filters {
+        source: args.source.as_deref(),
+        metadata: query::filters::parse_filters(&args.filter)?,
+        after: after.as_deref(),
+        before: before.as_deref(),
+    };
+    let result = query::semantic(&flat, &chunks, &args.term, &query_emb, &filt, args.n);
 
     if args.json {
         print_json(&result.query, "semantic", None, &result.hits, args)?;
@@ -324,6 +355,16 @@ fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchA
         &args.term,
     )?;
 
+    let after = args
+        .after
+        .as_deref()
+        .map(query::filters::parse_date)
+        .transpose()?;
+    let before = args
+        .before
+        .as_deref()
+        .map(query::filters::parse_date)
+        .transpose()?;
     let result = query::hybrid(
         &flat,
         &bm25_idx,
@@ -339,7 +380,12 @@ fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchA
             rrf_k: cfg.retrieval.rrf_k,
             rerank_provider: &cfg.reranker.provider,
             rerank_model: &cfg.reranker.model_name,
-            source: args.source.as_deref(),
+            filters: query::Filters {
+                source: args.source.as_deref(),
+                metadata: query::filters::parse_filters(&args.filter)?,
+                after: after.as_deref(),
+                before: before.as_deref(),
+            },
         },
     )?;
 
