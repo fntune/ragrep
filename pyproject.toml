@@ -53,6 +53,7 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.8.0",
     "mypy>=1.11.0",
+    "msgpack>=1.1.2",
 ]
 scrape = [
     "slack-sdk>=3.33.0",

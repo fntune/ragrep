@@ -1,7 +1,15 @@
 use std::path::PathBuf;
+use std::time::Instant;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Args;
+use serde::Serialize;
+
+use crate::config;
+use crate::index::store;
+use crate::models::{MetaValue, SearchResult};
+use crate::query;
+use crate::splash;
 
 #[derive(Args, Debug)]
 pub struct SearchArgs {
@@ -52,16 +60,263 @@ pub struct SearchArgs {
     #[arg(long)]
     pub metadata: bool,
 
-    /// Server URL (also reads `RAGREP_SERVER` env). Omit for local mode.
+    /// Server URL. Omit for local mode.
     #[arg(long, env = "RAGREP_SERVER")]
     pub server: Option<String>,
 
-    /// Path to config.toml (defaults to CWD, RAGREP_CONFIG, ~/.config/ragrep/).
+    /// Path to config.toml.
     #[arg(long)]
     pub config: Option<PathBuf>,
 }
 
-pub fn run(_args: SearchArgs) -> Result<()> {
-    eprintln!("ragrep search: not yet implemented in the Rust port (Phase 1)");
-    std::process::exit(1)
+pub fn run(args: SearchArgs) -> Result<()> {
+    if args.server.is_some() {
+        bail!("--server (server-mode proxy) not yet implemented in the Rust port");
+    }
+    if !args.filter.is_empty() || args.after.is_some() || args.before.is_some() {
+        bail!("--filter / --after / --before not yet implemented in the Rust port");
+    }
+
+    // Suppress unused warning for fields we'll wire up in later phases.
+    let _ = (&args.json, args.scores, args.metadata);
+
+    let cfg = config::load(args.config.as_deref())?;
+    let dir = cfg.index_dir();
+
+    let wall_start = Instant::now();
+
+    match args.mode.as_str() {
+        "grep" => run_grep(&dir, &args),
+        "semantic" | "hybrid" => bail!(
+            "search mode '{}' not yet implemented (Phase 1 step in progress)",
+            args.mode
+        ),
+        m => bail!("unknown mode: {m}"),
+    }?;
+
+    eprintln!(
+        "\n({:.2}s wall, local mode)",
+        wall_start.elapsed().as_secs_f32()
+    );
+    Ok(())
+}
+
+fn run_grep(dir: &std::path::Path, args: &SearchArgs) -> Result<()> {
+    if !store::chunks_exist(dir) {
+        // Fall back to splash if the user has nothing to search.
+        splash::print();
+        return Ok(());
+    }
+
+    let chunks = store::load_chunks(dir)?;
+    let result = query::grep(&chunks, &args.term, args.source.as_deref(), args.n);
+
+    if args.json {
+        print_json(
+            &result.query,
+            "grep",
+            Some(result.total_matches),
+            &result.hits,
+            args,
+        )?;
+    } else {
+        print_human(
+            &result.query,
+            "grep",
+            Some(result.total_matches),
+            &result.hits,
+            args,
+        );
+    }
+    Ok(())
+}
+
+fn print_human(
+    term: &str,
+    mode: &str,
+    total: Option<usize>,
+    hits: &[query::Hit],
+    args: &SearchArgs,
+) {
+    if mode == "grep" {
+        if let Some(t) = total {
+            println!("{} chunks match '{}'\n", t, term);
+        }
+    } else {
+        println!("Top {} results for '{}'\n", hits.len(), term);
+    }
+    for h in hits {
+        let r = &h.result;
+        let score_str = scores_inline(r);
+        println!(
+            "  [{}] [{}] {}  {}",
+            h.rank,
+            r.source,
+            truncate_title(&r.title),
+            score_str
+        );
+        println!("      id: {}", r.chunk_id);
+        if args.full {
+            println!("      {}", r.content);
+        } else if args.context > 0 {
+            println!("      {}", snippet(&r.content, args.context, term));
+        }
+    }
+}
+
+fn scores_inline(r: &SearchResult) -> String {
+    let mut parts = Vec::new();
+    if r.rerank_score != 0.0 {
+        parts.push(format!("rerank={:.3}", r.rerank_score));
+    }
+    if r.rrf_score != 0.0 {
+        parts.push(format!("rrf={:.3}", r.rrf_score));
+    }
+    if r.dense_score != 0.0 {
+        parts.push(format!("dense={:.3}", r.dense_score));
+    }
+    if r.bm25_score != 0.0 {
+        parts.push(format!("bm25={:.3}", r.bm25_score));
+    }
+    parts.join("  ")
+}
+
+#[derive(Serialize)]
+struct JsonHit<'a> {
+    rank: usize,
+    id: &'a str,
+    source: &'a str,
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rerank: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rrf: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dense: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bm25: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<&'a std::collections::BTreeMap<String, MetaValue>>,
+}
+
+#[derive(Serialize)]
+struct JsonOut<'a> {
+    query: &'a str,
+    mode: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_matches: Option<usize>,
+    results: Vec<JsonHit<'a>>,
+}
+
+fn print_json(
+    query: &str,
+    mode: &str,
+    total: Option<usize>,
+    hits: &[query::Hit],
+    args: &SearchArgs,
+) -> Result<()> {
+    let context = if args.json && !args.full && args.context == 200 {
+        // Mirror Python: in JSON mode, default to no snippet unless explicitly set.
+        0
+    } else {
+        args.context
+    };
+
+    let results: Vec<JsonHit> = hits
+        .iter()
+        .map(|h| {
+            let r = &h.result;
+            let title = truncate_title(&r.title);
+            let (snippet_v, content_v) = if args.full {
+                (None, Some(r.content.as_str()))
+            } else if context > 0 {
+                (Some(snippet(&r.content, context, query)), None)
+            } else {
+                (None, None)
+            };
+            JsonHit {
+                rank: h.rank,
+                id: r.chunk_id.as_str(),
+                source: r.source.as_str(),
+                title,
+                snippet: snippet_v,
+                content: content_v,
+                rerank: opt_score(r.rerank_score, args.scores),
+                rrf: opt_score(r.rrf_score, args.scores),
+                dense: opt_score(r.dense_score, args.scores),
+                bm25: opt_score(r.bm25_score, args.scores),
+                metadata: if args.metadata {
+                    Some(&r.metadata)
+                } else {
+                    None
+                },
+            }
+        })
+        .collect();
+
+    let out = JsonOut {
+        query,
+        mode,
+        total_matches: total,
+        results,
+    };
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
+}
+
+fn truncate_title(title: &str) -> String {
+    let chars: Vec<char> = title.chars().collect();
+    if chars.len() <= 80 {
+        title.to_string()
+    } else {
+        let mut s: String = chars[..77].iter().collect();
+        s.push_str("...");
+        s
+    }
+}
+
+fn opt_score(v: f32, on: bool) -> Option<f32> {
+    if on && v != 0.0 {
+        Some((v * 1000.0).round() / 1000.0)
+    } else {
+        None
+    }
+}
+
+fn snippet(content: &str, length: usize, term: &str) -> String {
+    let flat: String = content
+        .chars()
+        .map(|c| if c == '\n' { ' ' } else { c })
+        .collect();
+    let trimmed = flat.trim();
+    if length == 0 || length >= trimmed.chars().count() {
+        return trimmed.to_string();
+    }
+    let lower = trimmed.to_lowercase();
+    if let Some(pos) = lower.find(&term.to_lowercase()) {
+        // Approximate centering on `term`. Convert byte pos to char pos.
+        let prefix_chars = trimmed[..pos].chars().count();
+        let half_back = length / 4;
+        let start = prefix_chars.saturating_sub(half_back);
+        let chars: Vec<char> = trimmed.chars().collect();
+        let end = (start + length).min(chars.len());
+        let mut s: String = chars[start..end].iter().collect();
+        if start > 0 {
+            s.insert_str(0, "...");
+        }
+        if end < chars.len() {
+            s.push_str("...");
+        }
+        return s;
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut s: String = chars[..length.min(chars.len())].iter().collect();
+    if chars.len() > length {
+        s.push_str("...");
+    }
+    s
 }
