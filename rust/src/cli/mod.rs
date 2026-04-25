@@ -18,7 +18,7 @@ pub mod stats;
     name = "ragrep",
     version,
     about = "ripgrep for your team's knowledge base — hybrid retrieval, self-hosted",
-    arg_required_else_help = false,
+    arg_required_else_help = false
 )]
 pub struct Cli {
     /// Search term (default subcommand). Required unless an explicit subcommand is used.

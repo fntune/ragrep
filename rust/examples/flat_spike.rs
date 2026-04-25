@@ -11,7 +11,10 @@ const EMBED_DIM: usize = 1024;
 const TOP_K: usize = 10;
 
 #[derive(Parser)]
-#[command(name = "ragrep", about = "Phase 0.1 spike: mmap + brute-force IP search")]
+#[command(
+    name = "ragrep",
+    about = "Phase 0.1 spike: mmap + brute-force IP search"
+)]
 struct Args {
     #[arg(long, value_name = "PATH")]
     query: PathBuf,
@@ -66,7 +69,13 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
         }
         times.sort();
         let p50 = times[times.len() / 2];
-        eprintln!("bench {}x: min={:?} p50={:?} max={:?}", args.bench, times[0], p50, times[times.len() - 1]);
+        eprintln!(
+            "bench {}x: min={:?} p50={:?} max={:?}",
+            args.bench,
+            times[0],
+            p50,
+            times[times.len() - 1]
+        );
         return Ok(ExitCode::SUCCESS);
     }
 
@@ -92,5 +101,9 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
         );
     }
 
-    Ok(if all_match { ExitCode::SUCCESS } else { ExitCode::from(1) })
+    Ok(if all_match {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
 }

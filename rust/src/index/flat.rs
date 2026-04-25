@@ -21,7 +21,11 @@ impl Flat {
         if mmap.len() % row_bytes != 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("file size {} not a multiple of dim*4 ({})", mmap.len(), row_bytes),
+                format!(
+                    "file size {} not a multiple of dim*4 ({})",
+                    mmap.len(),
+                    row_bytes
+                ),
             ));
         }
         let n = mmap.len() / row_bytes;

@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 const ENV_VAR_CONFIG: &str = "RAGREP_CONFIG";
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub data: DataConfig,
@@ -23,20 +23,6 @@ pub struct Config {
     pub generation: GenerationConfig,
     #[serde(default)]
     pub scrape: ScrapeConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            data: DataConfig::default(),
-            ingest: IngestConfig::default(),
-            embedding: EmbeddingConfig::default(),
-            reranker: RerankerConfig::default(),
-            retrieval: RetrievalConfig::default(),
-            generation: GenerationConfig::default(),
-            scrape: ScrapeConfig::default(),
-        }
-    }
 }
 
 impl Config {
