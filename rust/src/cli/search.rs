@@ -6,10 +6,13 @@ use clap::Args;
 use serde::Serialize;
 
 use crate::config;
+use crate::embed;
 use crate::index::store;
 use crate::models::{MetaValue, SearchResult};
 use crate::query;
 use crate::splash;
+
+const EMBED_DIM: usize = 1024;
 
 #[derive(Args, Debug)]
 pub struct SearchArgs {
@@ -77,9 +80,6 @@ pub fn run(args: SearchArgs) -> Result<()> {
         bail!("--filter / --after / --before not yet implemented in the Rust port");
     }
 
-    // Suppress unused warning for fields we'll wire up in later phases.
-    let _ = (&args.json, args.scores, args.metadata);
-
     let cfg = config::load(args.config.as_deref())?;
     let dir = cfg.index_dir();
 
@@ -87,10 +87,8 @@ pub fn run(args: SearchArgs) -> Result<()> {
 
     match args.mode.as_str() {
         "grep" => run_grep(&dir, &args),
-        "semantic" | "hybrid" => bail!(
-            "search mode '{}' not yet implemented (Phase 1 step in progress)",
-            args.mode
-        ),
+        "semantic" => run_semantic(&dir, &cfg, &args),
+        "hybrid" => run_hybrid(&dir, &cfg, &args),
         m => bail!("unknown mode: {m}"),
     }?;
 
@@ -131,6 +129,88 @@ fn run_grep(dir: &std::path::Path, args: &SearchArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_semantic(
+    dir: &std::path::Path,
+    cfg: &crate::config::Config,
+    args: &SearchArgs,
+) -> Result<()> {
+    if !store::chunks_exist(dir) || !store::embeddings_exist(dir) {
+        splash::print();
+        return Ok(());
+    }
+
+    let chunks = store::load_chunks(dir)?;
+    let flat = store::load_flat(dir, EMBED_DIM)?;
+
+    let query_emb = embed::embed_query(
+        &cfg.embedding.provider,
+        &cfg.embedding.model_name,
+        &args.term,
+    )?;
+
+    let result = query::semantic(
+        &flat,
+        &chunks,
+        &args.term,
+        &query_emb,
+        args.source.as_deref(),
+        args.n,
+    );
+
+    if args.json {
+        print_json(&result.query, "semantic", None, &result.hits, args)?;
+    } else {
+        print_human(&result.query, "semantic", None, &result.hits, args);
+    }
+    Ok(())
+}
+
+fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchArgs) -> Result<()> {
+    if !store::chunks_exist(dir) || !store::embeddings_exist(dir) {
+        splash::print();
+        return Ok(());
+    }
+    if !store::bm25_exists(dir) {
+        bail!("bm25.msgpack missing — run `ragrep rebuild-bm25` first");
+    }
+
+    let chunks = store::load_chunks(dir)?;
+    let flat = store::load_flat(dir, EMBED_DIM)?;
+    let bm25_idx = store::load_bm25(dir)?;
+
+    let query_emb = embed::embed_query(
+        &cfg.embedding.provider,
+        &cfg.embedding.model_name,
+        &args.term,
+    )?;
+
+    let result = query::hybrid(
+        &flat,
+        &bm25_idx,
+        &chunks,
+        &args.term,
+        &query_emb,
+        query::HybridOpts {
+            n: args.n,
+            top_k_dense: cfg.retrieval.top_k_dense,
+            top_k_bm25: cfg.retrieval.top_k_bm25,
+            // Match Python's `fetch_n = max(n*4, 20)` in search.py::search_hybrid.
+            rerank_pool: (args.n * 4).max(20),
+            rrf_k: cfg.retrieval.rrf_k,
+            rerank_provider: &cfg.reranker.provider,
+            rerank_model: &cfg.reranker.model_name,
+            source: args.source.as_deref(),
+        },
+    )?;
+
+    if args.json {
+        print_json(&result.query, "hybrid", None, &result.hits, args)?;
+    } else {
+        print_human(&result.query, "hybrid", None, &result.hits, args);
+    }
+    Ok(())
+}
+
 fn print_human(
     term: &str,
     mode: &str,
@@ -147,7 +227,11 @@ fn print_human(
     }
     for h in hits {
         let r = &h.result;
-        let score_str = scores_inline(r);
+        let score_str = if args.scores {
+            scores_inline(r)
+        } else {
+            String::new()
+        };
         println!(
             "  [{}] [{}] {}  {}",
             h.rank,
