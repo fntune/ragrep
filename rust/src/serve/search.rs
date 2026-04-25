@@ -1,1 +1,250 @@
+//! `GET /search` handler. JSON response shape matches `src/ragrep/server.py::search`.
 
+use std::sync::Arc;
+
+use anyhow::{bail, Result};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use super::AppState;
+use crate::models::MetaValue;
+use crate::query;
+use crate::query::filters;
+
+#[derive(Deserialize, Clone)]
+pub struct SearchQuery {
+    pub q: String,
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    #[serde(default = "default_n")]
+    pub n: usize,
+    pub source: Option<String>,
+    pub filter: Option<String>,
+    pub after: Option<String>,
+    pub before: Option<String>,
+    #[serde(default = "default_context")]
+    pub context: usize,
+    #[serde(default)]
+    pub full: bool,
+    #[serde(default = "default_true")]
+    pub scores: bool,
+    #[serde(default)]
+    pub metadata: bool,
+}
+
+fn default_mode() -> String {
+    "grep".into()
+}
+fn default_n() -> usize {
+    5
+}
+fn default_context() -> usize {
+    300
+}
+fn default_true() -> bool {
+    true
+}
+
+pub async fn handle(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let state2 = Arc::clone(&state);
+    let q2 = q.clone();
+    let result = tokio::task::spawn_blocking(move || do_search(&state2, q2))
+        .await
+        .map_err(|e| internal(format!("join: {e}")))?;
+    match result {
+        Ok(payload) => Ok(Json(payload)),
+        Err(e) => Err(client_or_internal(e)),
+    }
+}
+
+fn do_search(state: &AppState, q: SearchQuery) -> Result<serde_json::Value> {
+    let filt_metadata = match &q.filter {
+        Some(s) if !s.is_empty() => {
+            let parts: Vec<String> = s.split(',').map(str::to_string).collect();
+            filters::parse_filters(&parts)?
+        }
+        _ => Default::default(),
+    };
+    let after = q.after.as_deref().map(filters::parse_date).transpose()?;
+    let before = q.before.as_deref().map(filters::parse_date).transpose()?;
+    let filt = query::Filters {
+        source: q.source.as_deref(),
+        metadata: filt_metadata,
+        after: after.as_deref(),
+        before: before.as_deref(),
+    };
+
+    let cfg = &state.cfg;
+
+    match q.mode.as_str() {
+        "grep" => {
+            let r = query::grep(&state.chunks, &q.q, &filt, q.n);
+            Ok(json!({
+                "query": r.query,
+                "mode": "grep",
+                "total_matches": r.total_matches,
+                "results": format_hits(&r.hits, &q),
+            }))
+        }
+        "semantic" => {
+            let emb = state.embedder.embed_query(&q.q)?;
+            let r = query::semantic(&state.flat, &state.chunks, &q.q, &emb, &filt, q.n);
+            Ok(json!({
+                "query": r.query,
+                "mode": "semantic",
+                "results": format_hits(&r.hits, &q),
+            }))
+        }
+        "hybrid" => {
+            let emb = state.embedder.embed_query(&q.q)?;
+            let opts = query::HybridOpts {
+                n: q.n,
+                top_k_dense: cfg.retrieval.top_k_dense,
+                top_k_bm25: cfg.retrieval.top_k_bm25,
+                rerank_pool: (q.n * 4).max(20),
+                rrf_k: cfg.retrieval.rrf_k,
+                rerank_provider: &cfg.reranker.provider,
+                rerank_model: &cfg.reranker.model_name,
+                filters: filt,
+            };
+            let r = query::hybrid(&state.flat, &state.bm25, &state.chunks, &q.q, &emb, opts)?;
+            Ok(json!({
+                "query": r.query,
+                "mode": "hybrid",
+                "results": format_hits(&r.hits, &q),
+            }))
+        }
+        m => bail!("invalid mode: {m}"),
+    }
+}
+
+#[derive(Serialize)]
+struct OutHit<'a> {
+    rank: usize,
+    id: &'a str,
+    source: &'a str,
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rerank: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rrf: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dense: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bm25: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<&'a std::collections::BTreeMap<String, MetaValue>>,
+}
+
+fn format_hits(hits: &[query::Hit], q: &SearchQuery) -> Vec<serde_json::Value> {
+    hits.iter()
+        .map(|h| {
+            let r = &h.result;
+            let title = truncate_title(&r.title);
+            let (snippet_v, content_v) = if q.full {
+                (None, Some(r.content.as_str()))
+            } else if q.context > 0 {
+                (Some(snippet(&r.content, q.context, &q.q)), None)
+            } else {
+                (None, None)
+            };
+            let out = OutHit {
+                rank: h.rank,
+                id: r.chunk_id.as_str(),
+                source: r.source.as_str(),
+                title,
+                snippet: snippet_v,
+                content: content_v,
+                rerank: opt_score(r.rerank_score, q.scores),
+                rrf: opt_score(r.rrf_score, q.scores),
+                dense: opt_score(r.dense_score, q.scores),
+                bm25: opt_score(r.bm25_score, q.scores),
+                metadata: if q.metadata { Some(&r.metadata) } else { None },
+            };
+            serde_json::to_value(&out).unwrap_or_else(|_| json!({}))
+        })
+        .collect()
+}
+
+fn truncate_title(title: &str) -> String {
+    let chars: Vec<char> = title.chars().collect();
+    if chars.len() <= 80 {
+        title.to_string()
+    } else {
+        let mut s: String = chars[..77].iter().collect();
+        s.push_str("...");
+        s
+    }
+}
+
+fn opt_score(v: f32, on: bool) -> Option<f32> {
+    if on && v != 0.0 {
+        Some((v * 1000.0).round() / 1000.0)
+    } else {
+        None
+    }
+}
+
+fn snippet(content: &str, length: usize, term: &str) -> String {
+    let flat: String = content
+        .chars()
+        .map(|c| if c == '\n' { ' ' } else { c })
+        .collect();
+    let trimmed = flat.trim();
+    if length == 0 || length >= trimmed.chars().count() {
+        return trimmed.to_string();
+    }
+    let lower = trimmed.to_lowercase();
+    if let Some(pos) = lower.find(&term.to_lowercase()) {
+        let prefix_chars = trimmed[..pos].chars().count();
+        let half_back = length / 4;
+        let start = prefix_chars.saturating_sub(half_back);
+        let chars: Vec<char> = trimmed.chars().collect();
+        let end = (start + length).min(chars.len());
+        let mut s: String = chars[start..end].iter().collect();
+        if start > 0 {
+            s.insert_str(0, "...");
+        }
+        if end < chars.len() {
+            s.push_str("...");
+        }
+        return s;
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut s: String = chars[..length.min(chars.len())].iter().collect();
+    if chars.len() > length {
+        s.push_str("...");
+    }
+    s
+}
+
+fn internal(msg: String) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({ "error": msg })),
+    )
+}
+
+fn client_or_internal(e: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
+    let msg = format!("{e}");
+    if msg.starts_with("invalid mode")
+        || msg.contains("invalid filter")
+        || msg.contains("invalid date")
+    {
+        (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
+    } else {
+        internal(msg)
+    }
+}
