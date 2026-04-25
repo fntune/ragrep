@@ -4,6 +4,7 @@ use std::io;
 use std::path::Path;
 
 use memmap2::Mmap;
+use rayon::prelude::*;
 use wide::f32x8;
 
 pub struct Flat {
@@ -35,6 +36,7 @@ impl Flat {
         assert_eq!(query.len(), self.dim, "query dim mismatch");
         let embs = self.embeddings();
         let mut scored: Vec<(f32, u32)> = (0..self.n)
+            .into_par_iter()
             .map(|i| {
                 let row = &embs[i * self.dim..(i + 1) * self.dim];
                 (inner_product(query, row), i as u32)
