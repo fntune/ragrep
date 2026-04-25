@@ -26,6 +26,7 @@ bytemuck = "1"
 wide = "0.7"
 rayon = "1"
 sha2 = "0.10"
+regex = "1"
 time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
 
 # serialization
@@ -52,8 +53,9 @@ axum = "0.7"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 
-# tokenization (chunking)
-tiktoken-rs = "0.6"
+# tokenization removed: ingest::chunk uses an approx-token heuristic
+# (max(words, bytes/4)) that handles tab-delimited content better than
+# real tokens. See docs/plans/rust-rewrite.md, Step 2.4.
 
 # scrapers
 git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
