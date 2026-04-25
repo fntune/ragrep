@@ -1,0 +1,10 @@
+pub mod cli;
+pub mod config;
+pub mod embed;
+pub mod eval;
+pub mod index;
+pub mod ingest;
+pub mod models;
+pub mod query;
+pub mod serve;
+pub mod splash;

@@ -8,18 +8,55 @@ authors = ["Sourabh Sharma <sour4bh@pm.me>"]
 repository = "https://github.com/fntune/ragrep"
 readme = "../README.md"
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "ragrep"
 path = "src/main.rs"
 
+[[example]]
+name = "flat_spike"
+path = "examples/flat_spike.rs"
+
 [dependencies]
+# core data + math
 memmap2 = "0.9"
 bytemuck = "1"
 wide = "0.7"
 rayon = "1"
+sha2 = "0.10"
+
+# serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-clap = { version = "4", features = ["derive"] }
+rmp-serde = "1"
+toml = "0.8"
+
+# CLI + logging + env
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+ctrlc = "3"
+anyhow = "1"
+thiserror = "2"
+
+# async runtime + HTTP
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+
+# server
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
+# tokenization (chunking)
+tiktoken-rs = "0.6"
+
+# scrapers
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
+yup-oauth2 = "12"
 
 [profile.release]
 opt-level = 3
