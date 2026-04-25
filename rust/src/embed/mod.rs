@@ -34,7 +34,8 @@ pub trait Embedder: Send + Sync {
 pub fn make(provider: &str, model: &str) -> Result<Box<dyn Embedder>> {
     match provider {
         "voyage" => Ok(Box::new(voyage::Embedder::new(model)?)),
-        // openai/gemini land in 2.3b/2.3c.
+        "openai" => Ok(Box::new(openai::Embedder::new(model)?)),
+        "gemini" => Ok(Box::new(gemini::Embedder::new(model)?)),
         other => bail!("embedding provider '{other}' not yet supported in the Rust port"),
     }
 }

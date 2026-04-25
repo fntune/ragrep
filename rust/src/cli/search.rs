@@ -12,8 +12,6 @@ use crate::models::{MetaValue, SearchResult};
 use crate::query;
 use crate::splash;
 
-const EMBED_DIM: usize = 1024;
-
 #[derive(Args, Debug)]
 pub struct SearchArgs {
     /// Search term (positional).
@@ -301,14 +299,10 @@ fn run_semantic(
         return Ok(());
     }
 
+    let embedder = embed::make(&cfg.embedding.provider, &cfg.embedding.model_name)?;
     let chunks = store::load_chunks(dir)?;
-    let flat = store::load_flat(dir, EMBED_DIM)?;
-
-    let query_emb = embed::embed_query(
-        &cfg.embedding.provider,
-        &cfg.embedding.model_name,
-        &args.term,
-    )?;
+    let flat = store::load_flat(dir, embedder.dim())?;
+    let query_emb = embedder.embed_query(&args.term)?;
 
     let after = args
         .after
@@ -345,15 +339,11 @@ fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchA
         bail!("bm25.msgpack missing — run `ragrep rebuild-bm25` first");
     }
 
+    let embedder = embed::make(&cfg.embedding.provider, &cfg.embedding.model_name)?;
     let chunks = store::load_chunks(dir)?;
-    let flat = store::load_flat(dir, EMBED_DIM)?;
+    let flat = store::load_flat(dir, embedder.dim())?;
     let bm25_idx = store::load_bm25(dir)?;
-
-    let query_emb = embed::embed_query(
-        &cfg.embedding.provider,
-        &cfg.embedding.model_name,
-        &args.term,
-    )?;
+    let query_emb = embedder.embed_query(&args.term)?;
 
     let after = args
         .after
