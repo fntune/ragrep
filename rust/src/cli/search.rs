@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::Args;
 use serde::Serialize;
 
@@ -73,11 +73,19 @@ pub struct SearchArgs {
 }
 
 pub fn run(args: SearchArgs) -> Result<()> {
-    if args.server.is_some() {
-        bail!("--server (server-mode proxy) not yet implemented in the Rust port");
-    }
     if !args.filter.is_empty() || args.after.is_some() || args.before.is_some() {
         bail!("--filter / --after / --before not yet implemented in the Rust port");
+    }
+
+    let wall_start = Instant::now();
+
+    if let Some(server) = args.server.as_deref() {
+        run_proxy(server, &args)?;
+        eprintln!(
+            "\n({:.2}s wall, server mode)",
+            wall_start.elapsed().as_secs_f32()
+        );
+        return Ok(());
     }
 
     // Hide rayon's first-call thread-pool init (~6ms) behind config + msgpack
@@ -89,8 +97,6 @@ pub fn run(args: SearchArgs) -> Result<()> {
 
     let cfg = config::load(args.config.as_deref())?;
     let dir = cfg.index_dir();
-
-    let wall_start = Instant::now();
 
     match args.mode.as_str() {
         "grep" => run_grep(&dir, &args),
@@ -104,6 +110,133 @@ pub fn run(args: SearchArgs) -> Result<()> {
         wall_start.elapsed().as_secs_f32()
     );
     Ok(())
+}
+
+fn run_proxy(server: &str, args: &SearchArgs) -> Result<()> {
+    use std::time::Duration;
+
+    let url = format!("{}/search", server.trim_end_matches('/'));
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(180))
+        .build()
+        .context("building HTTP client")?;
+
+    let n_str = args.n.to_string();
+    let context_str = args.context.to_string();
+    let full_str = args.full.to_string();
+    let scores_str = args.scores.to_string();
+    let metadata_str = args.metadata.to_string();
+    let mut params: Vec<(&str, &str)> = vec![
+        ("q", args.term.as_str()),
+        ("mode", &args.mode),
+        ("n", &n_str),
+        ("context", &context_str),
+        ("full", &full_str),
+        ("scores", &scores_str),
+        ("metadata", &metadata_str),
+    ];
+    if let Some(s) = args.source.as_deref() {
+        params.push(("source", s));
+    }
+
+    let resp = client
+        .get(&url)
+        .query(&params)
+        .send()
+        .with_context(|| format!("contacting server at {server}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        bail!("server returned {status}: {body}");
+    }
+    let body = resp.text().context("reading server response body")?;
+
+    if args.json {
+        println!("{body}");
+        return Ok(());
+    }
+
+    let payload: ServerPayload =
+        serde_json::from_str(&body).context("parsing server response (expected JSON)")?;
+
+    if payload.mode == "grep" {
+        if let Some(t) = payload.total_matches {
+            println!("{} chunks match '{}'\n", t, args.term);
+        }
+    } else {
+        println!(
+            "Top {} results for '{}'\n",
+            payload.results.len(),
+            args.term
+        );
+    }
+    for r in &payload.results {
+        let score_str = if args.scores {
+            server_scores_inline(r)
+        } else {
+            String::new()
+        };
+        println!(
+            "  [{}] [{}] {}  {}",
+            r.rank,
+            r.source,
+            truncate_title(&r.title),
+            score_str
+        );
+        println!("      id: {}", r.id);
+        if let Some(c) = &r.content {
+            println!("      {}", c);
+        } else if let Some(s) = &r.snippet {
+            println!("      {}", s);
+        }
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+struct ServerPayload {
+    mode: String,
+    #[serde(default)]
+    total_matches: Option<usize>,
+    results: Vec<ServerResult>,
+}
+
+#[derive(serde::Deserialize)]
+struct ServerResult {
+    rank: usize,
+    id: String,
+    source: String,
+    title: String,
+    #[serde(default)]
+    snippet: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    rerank: Option<f32>,
+    #[serde(default)]
+    rrf: Option<f32>,
+    #[serde(default)]
+    dense: Option<f32>,
+    #[serde(default)]
+    bm25: Option<f32>,
+}
+
+fn server_scores_inline(r: &ServerResult) -> String {
+    let mut parts = Vec::new();
+    if let Some(v) = r.rerank {
+        parts.push(format!("rerank={v:.3}"));
+    }
+    if let Some(v) = r.rrf {
+        parts.push(format!("rrf={v:.3}"));
+    }
+    if let Some(v) = r.dense {
+        parts.push(format!("dense={v:.3}"));
+    }
+    if let Some(v) = r.bm25 {
+        parts.push(format!("bm25={v:.3}"));
+    }
+    parts.join("  ")
 }
 
 fn run_grep(dir: &std::path::Path, args: &SearchArgs) -> Result<()> {
