@@ -1,0 +1,20 @@
+# Per-target SIMD baselines. Each target picks an instruction set that's
+# widely deployed but enables the SIMD wins we need for flat vector search.
+#
+# - apple-a14 covers M1 and later (the entire Apple Silicon line, 2020+).
+# - x86-64-v3 requires AVX2 (Haswell, 2013+ on Intel; Excavator, 2015+ on AMD).
+# - neoverse-n1 covers AWS Graviton2/3 and most modern ARM Linux servers.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-cpu=apple-a14"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=neoverse-n1"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-cpu=x86-64-v3"]

@@ -1,0 +1,27 @@
+[package]
+name = "ragrep"
+version = "0.0.1"
+edition = "2021"
+description = "ripgrep for your team's knowledge base — hybrid retrieval over Slack, Confluence, Drive, Git, and files"
+license = "MIT"
+authors = ["Sourabh Sharma <sour4bh@pm.me>"]
+repository = "https://github.com/fntune/ragrep"
+readme = "../README.md"
+
+[[bin]]
+name = "ragrep"
+path = "src/main.rs"
+
+[dependencies]
+memmap2 = "0.9"
+bytemuck = "1"
+wide = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
