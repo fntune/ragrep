@@ -154,7 +154,7 @@ def main() -> None:
     if not index_dir.exists():
         sys.exit(f"missing: {index_dir}")
 
-    repo_root = index_dir.parent
+    repo_root = index_dir.parent.parent if index_dir.parent.name == "data" else index_dir.parent
     provider, model = resolve_embedding(repo_root)
 
     print(f"migrating {index_dir} (provider={provider}, model={model}) ...")
