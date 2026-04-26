@@ -137,6 +137,8 @@ struct OutHit<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    score: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     rerank: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rrf: Option<f32>,
@@ -167,10 +169,11 @@ fn format_hits(hits: &[query::Hit], q: &SearchQuery) -> Vec<serde_json::Value> {
                 title,
                 snippet: snippet_v,
                 content: content_v,
-                rerank: opt_score(r.rerank_score, q.scores),
-                rrf: opt_score(r.rrf_score, q.scores),
-                dense: opt_score(r.dense_score, q.scores),
-                bm25: opt_score(r.bm25_score, q.scores),
+                score: semantic_score(r.dense_score, q),
+                rerank: hybrid_score(r.rerank_score, q),
+                rrf: hybrid_score(r.rrf_score, q),
+                dense: hybrid_score(r.dense_score, q),
+                bm25: hybrid_score(r.bm25_score, q),
                 metadata: if q.metadata { Some(&r.metadata) } else { None },
             };
             serde_json::to_value(&out).unwrap_or_else(|_| json!({}))
@@ -189,12 +192,24 @@ fn truncate_title(title: &str) -> String {
     }
 }
 
-fn opt_score(v: f32, on: bool) -> Option<f32> {
-    if on && v != 0.0 {
-        Some((v * 1000.0).round() / 1000.0)
+fn semantic_score(v: f32, q: &SearchQuery) -> Option<f32> {
+    if q.scores && q.mode == "semantic" {
+        Some(round_score(v))
     } else {
         None
     }
+}
+
+fn hybrid_score(v: f32, q: &SearchQuery) -> Option<f32> {
+    if q.scores && q.mode == "hybrid" {
+        Some(round_score(v))
+    } else {
+        None
+    }
+}
+
+fn round_score(v: f32) -> f32 {
+    (v * 1000.0).round() / 1000.0
 }
 
 fn snippet(content: &str, length: usize, term: &str) -> String {
@@ -246,5 +261,40 @@ fn client_or_internal(e: anyhow::Error) -> (StatusCode, Json<serde_json::Value>)
         (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
     } else {
         internal(msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn query(mode: &str) -> SearchQuery {
+        SearchQuery {
+            q: "auth".to_string(),
+            mode: mode.to_string(),
+            n: 5,
+            source: None,
+            filter: None,
+            after: None,
+            before: None,
+            context: 300,
+            full: false,
+            scores: true,
+            metadata: false,
+        }
+    }
+
+    #[test]
+    fn semantic_scores_use_python_field_name() {
+        let q = query("semantic");
+        assert_eq!(semantic_score(0.12345, &q), Some(0.123));
+        assert_eq!(hybrid_score(0.12345, &q), None);
+    }
+
+    #[test]
+    fn hybrid_scores_include_zero_values() {
+        let q = query("hybrid");
+        assert_eq!(hybrid_score(0.0, &q), Some(0.0));
+        assert_eq!(semantic_score(0.25, &q), None);
     }
 }

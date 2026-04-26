@@ -2,10 +2,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::process::Command;
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
-use git2::{DiffFormat, DiffStatsFormat, Repository, Sort};
+use git2::{Repository, Sort};
 use regex::Regex;
 use serde::Serialize;
 use time::macros::format_description;
@@ -148,15 +149,11 @@ fn scrape_repo(
 
         let body = commit.body().unwrap_or("").trim().to_string();
         let (pr_number, branch) = parse_pr_info(&subject);
-        let diff = commit_diff(&repo, &commit)?;
-        let mut files_changed = files_changed(&diff);
+        let mut files_changed = git_files_changed(repo_path, &oid.to_string())?;
         files_changed.retain(|file| !matches_any(&file.path, exclude_patterns));
 
-        let mut patch = diff_patch(&diff)?;
-        let diff_stat = diff_stat(&diff)?;
-        if patch.len() > MAX_DIFF_BYTES {
-            patch.clear();
-        }
+        let mut patch = git_diff(repo_path, &oid.to_string())?.unwrap_or_default();
+        let diff_stat = git_diff_stat(repo_path, &oid.to_string())?;
         if !patch.is_empty() {
             patch = filter_diff(&patch, exclude_patterns);
         }
@@ -194,59 +191,57 @@ fn scrape_repo(
     Ok(records)
 }
 
-fn commit_diff<'repo>(
-    repo: &'repo Repository,
-    commit: &git2::Commit<'repo>,
-) -> Result<git2::Diff<'repo>> {
-    let tree = commit.tree()?;
-    let parent_tree = if commit.parent_count() > 0 {
-        Some(commit.parent(0)?.tree()?)
-    } else {
-        None
+fn git_files_changed(repo_path: &Path, commit_hash: &str) -> Result<Vec<FileChange>> {
+    let range = format!("{commit_hash}^..{commit_hash}");
+    let Some(output) = run_git(repo_path, &["diff", "--name-status", &range])? else {
+        return Ok(Vec::new());
     };
-    repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
-        .context("building commit diff")
+    let mut files = Vec::new();
+    for line in output.trim().lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let parts = line.splitn(3, '\t').collect::<Vec<_>>();
+        if parts.len() >= 2 {
+            files.push(FileChange {
+                status: parts[0].chars().next().unwrap_or('M').to_string(),
+                path: parts[parts.len() - 1].to_string(),
+            });
+        }
+    }
+    Ok(files)
 }
 
-fn files_changed(diff: &git2::Diff<'_>) -> Vec<FileChange> {
-    diff.deltas()
-        .filter_map(|delta| {
-            let path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path())?
-                .to_string_lossy()
-                .to_string();
-            let status = match delta.status() {
-                git2::Delta::Added => "A",
-                git2::Delta::Deleted => "D",
-                git2::Delta::Renamed => "R",
-                git2::Delta::Copied => "C",
-                git2::Delta::Modified => "M",
-                git2::Delta::Typechange => "T",
-                _ => "M",
-            };
-            Some(FileChange {
-                status: status.to_string(),
-                path,
-            })
-        })
-        .collect()
+fn git_diff(repo_path: &Path, commit_hash: &str) -> Result<Option<String>> {
+    let range = format!("{commit_hash}^..{commit_hash}");
+    let Some(diff) = run_git(repo_path, &["diff", &range])? else {
+        return Ok(None);
+    };
+    if diff.is_empty() || diff.len() > MAX_DIFF_BYTES {
+        return Ok(None);
+    }
+    Ok(Some(diff))
 }
 
-fn diff_patch(diff: &git2::Diff<'_>) -> Result<String> {
-    let mut out = Vec::new();
-    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
-        out.extend_from_slice(line.content());
-        true
-    })?;
-    Ok(String::from_utf8_lossy(&out).into_owned())
+fn git_diff_stat(repo_path: &Path, commit_hash: &str) -> Result<String> {
+    let range = format!("{commit_hash}^..{commit_hash}");
+    Ok(run_git(repo_path, &["diff", "--stat", &range])?
+        .unwrap_or_default()
+        .trim()
+        .to_string())
 }
 
-fn diff_stat(diff: &git2::Diff<'_>) -> Result<String> {
-    let stats = diff.stats()?;
-    let buf = stats.to_buf(DiffStatsFormat::FULL, 80)?;
-    Ok(String::from_utf8_lossy(buf.as_ref()).trim().to_string())
+fn run_git(repo_path: &Path, args: &[&str]) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(args)
+        .output()
+        .with_context(|| format!("running git in {}", repo_path.display()))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
 }
 
 fn filter_diff(diff: &str, exclude_patterns: &[Regex]) -> String {
@@ -342,6 +337,22 @@ fn format_git_date(time: git2::Time) -> String {
 mod tests {
     use super::*;
 
+    fn run_raw_git(repo_path: &Path, args: &[&str]) -> Result<String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .args(args)
+            .output()
+            .with_context(|| format!("running test git in {}", repo_path.display()))?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
     #[test]
     fn parses_bitbucket_merge_subject() {
         let (pr, branch) = parse_pr_info("Merged in feature/auth (pull request #123)");
@@ -356,5 +367,50 @@ mod tests {
         let filtered = filter_diff(diff, &patterns);
         assert!(filtered.contains("keep.rs"));
         assert!(!filtered.contains("generated/x.rs"));
+    }
+
+    #[test]
+    fn git_payloads_match_cli_output() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let repo = dir.path();
+        run_raw_git(repo, &["init"])?;
+        run_raw_git(repo, &["config", "user.name", "Test User"])?;
+        run_raw_git(repo, &["config", "user.email", "test@example.com"])?;
+
+        std::fs::create_dir_all(repo.join("src"))?;
+        std::fs::write(
+            repo.join("src/main.rs"),
+            "fn main() {\n    println!(\"one\");\n}\n",
+        )?;
+        run_raw_git(repo, &["add", "."])?;
+        run_raw_git(repo, &["commit", "-m", "initial"])?;
+
+        std::fs::write(
+            repo.join("src/main.rs"),
+            "fn main() {\n    println!(\"two\");\n}\n",
+        )?;
+        run_raw_git(repo, &["add", "."])?;
+        run_raw_git(repo, &["commit", "-m", "change output"])?;
+
+        let hash = run_raw_git(repo, &["rev-parse", "HEAD"])?
+            .trim()
+            .to_string();
+        let range = format!("{hash}^..{hash}");
+        let expected_diff = run_raw_git(repo, &["diff", &range])?;
+        let expected_stat = run_raw_git(repo, &["diff", "--stat", &range])?
+            .trim()
+            .to_string();
+
+        assert_eq!(git_diff(repo, &hash)?, Some(expected_diff));
+        assert_eq!(git_diff_stat(repo, &hash)?, expected_stat);
+        assert_eq!(
+            git_files_changed(repo, &hash)?
+                .into_iter()
+                .map(|file| (file.status, file.path))
+                .collect::<Vec<_>>(),
+            vec![("M".to_string(), "src/main.rs".to_string())]
+        );
+
+        Ok(())
     }
 }
