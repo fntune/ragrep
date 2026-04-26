@@ -35,6 +35,10 @@ pub fn int_value(config: &BTreeMap<String, toml::Value>, key: &str) -> Option<i6
     config.get(key).and_then(toml::Value::as_integer)
 }
 
+pub fn bool_value(config: &BTreeMap<String, toml::Value>, key: &str) -> Option<bool> {
+    config.get(key).and_then(toml::Value::as_bool)
+}
+
 pub fn expand_repos(patterns: &[String]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
