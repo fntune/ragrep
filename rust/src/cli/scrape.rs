@@ -37,7 +37,9 @@ pub fn run(args: ScrapeArgs) -> Result<()> {
             "atlassian" => {
                 scrape::atlassian::scrape(&raw_dir, &cfg.scrape.atlassian)?;
             }
-            "gdrive" => bail!("ragrep scrape gdrive is not yet implemented in the Rust port"),
+            "gdrive" => {
+                scrape::gdrive::scrape(&raw_dir, &cfg.scrape.gdrive)?;
+            }
             "bitbucket" => {
                 scrape::bitbucket::scrape(&raw_dir, &cfg.scrape.bitbucket)?;
             }
