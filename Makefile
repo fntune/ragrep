@@ -8,7 +8,8 @@ CONFIG ?= config.toml
 LOG_LEVEL ?= INFO
 GCS_BUCKET ?= $(RAGREP_GCS_BUCKET)
 INDEX_DIR ?= data/index
-INDEX_FILES := faiss.index chunks.pkl bm25.pkl
+RAGREP := cargo run --manifest-path rust/Cargo.toml --
+INDEX_FILES := embeddings.bin chunks.msgpack bm25.msgpack
 
 help:
 	@echo "ragrep — hybrid FAISS + BM25 RAG pipeline"
@@ -41,31 +42,29 @@ help:
 	@echo "  ragrep <term> --server http://localhost:8321"
 
 install:
-	@echo "Creating virtual environment with uv..."
-	uv sync --extra full --extra dev --extra serve
-	@echo "Done. Activate with: source .venv/bin/activate"
+	cargo build --manifest-path rust/Cargo.toml --release --bin ragrep
 
 # GCS index management (requires RAGREP_GCS_BUCKET env var)
 upload-index:
 	@test -n "$(GCS_BUCKET)" || (echo "Error: RAGREP_GCS_BUCKET not set" && exit 1)
 	@echo "Uploading index to gs://$(GCS_BUCKET)/ ..."
-	gcloud storage cp $(INDEX_DIR)/faiss.index gs://$(GCS_BUCKET)/
-	gcloud storage cp $(INDEX_DIR)/chunks.pkl gs://$(GCS_BUCKET)/
-	gcloud storage cp $(INDEX_DIR)/bm25.pkl gs://$(GCS_BUCKET)/
-	@echo "Upload complete. embed_cache.pkl excluded (ingestion only)."
+	@for file in $(INDEX_FILES); do \
+		gcloud storage cp "$(INDEX_DIR)/$$file" "gs://$(GCS_BUCKET)/$$file"; \
+	done
+	@echo "Upload complete. Embedding cache excluded (ingestion only)."
 
 download-index:
 	@test -n "$(GCS_BUCKET)" || (echo "Error: RAGREP_GCS_BUCKET not set" && exit 1)
 	@mkdir -p $(INDEX_DIR)
 	@echo "Downloading index from gs://$(GCS_BUCKET)/ ..."
-	gcloud storage cp gs://$(GCS_BUCKET)/faiss.index $(INDEX_DIR)/
-	gcloud storage cp gs://$(GCS_BUCKET)/chunks.pkl $(INDEX_DIR)/
-	gcloud storage cp gs://$(GCS_BUCKET)/bm25.pkl $(INDEX_DIR)/
+	@for file in $(INDEX_FILES); do \
+		gcloud storage cp "gs://$(GCS_BUCKET)/$$file" "$(INDEX_DIR)/$$file"; \
+	done
 	@echo "Index downloaded to $(INDEX_DIR)/."
 
 # Server
 serve:
-	uv run uvicorn ragrep.server:app --port 8321 --reload
+	$(RAGREP) serve --config $(CONFIG) --port 8321
 
 # Cloud Run deployment helpers
 requirements.txt: pyproject.toml uv.lock
@@ -76,9 +75,9 @@ requirements.txt: pyproject.toml uv.lock
 # Pipeline commands
 scrape:
 ifdef SOURCE
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) scrape --source $(SOURCE)
+	$(RAGREP) scrape --config $(CONFIG) --source $(SOURCE)
 else
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) scrape
+	$(RAGREP) scrape --config $(CONFIG)
 endif
 
 INGEST_ARGS :=
@@ -90,20 +89,20 @@ INGEST_ARGS += --source $(SOURCE)
 endif
 
 ingest:
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) ingest $(INGEST_ARGS)
+	$(RAGREP) ingest --config $(CONFIG) $(INGEST_ARGS)
 
 query:
 ifdef Q
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) query -q "$(Q)"
+	$(RAGREP) "$(Q)" --config $(CONFIG)
 else
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) query
+	$(RAGREP)
 endif
 
 stats:
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) stats
+	$(RAGREP) stats --config $(CONFIG)
 
 eval:
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) eval
+	$(RAGREP) eval --config $(CONFIG)
 
 INSPECT_ARGS :=
 ifdef SOURCE
@@ -120,15 +119,14 @@ INSPECT_ARGS += --full
 endif
 
 inspect:
-	uv run python -m ragrep.cli --config $(CONFIG) --log-level $(LOG_LEVEL) inspect $(MODE) $(INSPECT_ARGS)
+	$(RAGREP) inspect $(MODE) --config $(CONFIG) $(INSPECT_ARGS)
 
 check:
-	uv run ruff check src/ tests/
-	uv run ruff format --check src/ tests/
-	uv run mypy src/
+	cargo fmt --manifest-path rust/Cargo.toml --check
+	cargo clippy --manifest-path rust/Cargo.toml --all-targets --no-deps
 
 test:
-	uv run pytest tests/ -v
+	cargo test --manifest-path rust/Cargo.toml
 
 clean:
 	@echo "Removing data/index/..."

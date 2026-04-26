@@ -143,9 +143,11 @@ fn run_proxy(server: &str, args: &SearchArgs) -> Result<()> {
         params.push(("before", b));
     }
 
-    let resp = client
-        .get(&url)
-        .query(&params)
+    let mut request = client.get(&url).query(&params);
+    if let Some(token) = cloud_run_identity_token(server) {
+        request = request.bearer_auth(token);
+    }
+    let resp = request
         .send()
         .with_context(|| format!("contacting server at {server}"))?;
 
@@ -196,6 +198,26 @@ fn run_proxy(server: &str, args: &SearchArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn cloud_run_identity_token(server: &str) -> Option<String> {
+    if !server.contains(".run.app") {
+        return None;
+    }
+    let output = std::process::Command::new("gcloud")
+        .args(["auth", "print-identity-token"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let token = String::from_utf8(output.stdout).ok()?;
+    let token = token.trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
 }
 
 #[derive(serde::Deserialize)]

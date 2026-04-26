@@ -39,12 +39,15 @@ impl AppState {
     }
 }
 
-pub fn router(state: Arc<AppState>) -> Router {
-    Router::new()
-        .route("/search", get(search::handle))
-        .route("/health", get(health))
-        .with_state(state)
-        .layer(TraceLayer::new_for_http())
+pub fn router(state: Arc<AppState>, auth_policy: auth::Policy) -> Router {
+    auth::apply(
+        Router::new()
+            .route("/search", get(search::handle))
+            .route("/health", get(health))
+            .with_state(state)
+            .layer(TraceLayer::new_for_http()),
+        auth_policy,
+    )
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
