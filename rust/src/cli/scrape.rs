@@ -4,6 +4,7 @@ use anyhow::{bail, Result};
 use clap::Args;
 
 use crate::config;
+use crate::ingest::extract;
 use crate::ingest::scrape;
 
 #[derive(Args, Debug)]
@@ -34,7 +35,9 @@ pub fn run(args: ScrapeArgs) -> Result<()> {
             "atlassian" => bail!("ragrep scrape atlassian is not yet implemented in the Rust port"),
             "gdrive" => bail!("ragrep scrape gdrive is not yet implemented in the Rust port"),
             "bitbucket" => bail!("ragrep scrape bitbucket is not yet implemented in the Rust port"),
-            "files" => bail!("ragrep scrape files is not yet implemented in the Rust port"),
+            "files" => {
+                extract::extract_all(&raw_dir)?;
+            }
             other => bail!("unknown scrape source: {other}"),
         }
     }
