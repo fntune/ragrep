@@ -1,4 +1,4 @@
-//! `GET /search` handler. JSON response shape matches `src/ragrep/server.py::search`.
+//! `GET /search` handler.
 
 use std::sync::Arc;
 
@@ -137,15 +137,15 @@ struct OutHit<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    score: Option<f32>,
+    score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rerank: Option<f32>,
+    rerank: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rrf: Option<f32>,
+    rrf: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    dense: Option<f32>,
+    dense: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    bm25: Option<f32>,
+    bm25: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<&'a std::collections::BTreeMap<String, MetaValue>>,
 }
@@ -192,7 +192,7 @@ fn truncate_title(title: &str) -> String {
     }
 }
 
-fn semantic_score(v: f32, q: &SearchQuery) -> Option<f32> {
+fn semantic_score(v: f32, q: &SearchQuery) -> Option<f64> {
     if q.scores && q.mode == "semantic" {
         Some(round_score(v))
     } else {
@@ -200,7 +200,7 @@ fn semantic_score(v: f32, q: &SearchQuery) -> Option<f32> {
     }
 }
 
-fn hybrid_score(v: f32, q: &SearchQuery) -> Option<f32> {
+fn hybrid_score(v: f32, q: &SearchQuery) -> Option<f64> {
     if q.scores && q.mode == "hybrid" {
         Some(round_score(v))
     } else {
@@ -208,8 +208,8 @@ fn hybrid_score(v: f32, q: &SearchQuery) -> Option<f32> {
     }
 }
 
-fn round_score(v: f32) -> f32 {
-    (v * 1000.0).round() / 1000.0
+fn round_score(v: f32) -> f64 {
+    ((v as f64) * 1000.0).round() / 1000.0
 }
 
 fn snippet(content: &str, length: usize, term: &str) -> String {
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_scores_use_python_field_name() {
+    fn semantic_scores_use_public_field_name() {
         let q = query("semantic");
         assert_eq!(semantic_score(0.12345, &q), Some(0.123));
         assert_eq!(hybrid_score(0.12345, &q), None);

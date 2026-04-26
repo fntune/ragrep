@@ -15,6 +15,7 @@ import pickle
 import struct
 import sys
 import tomllib
+import types
 from pathlib import Path
 
 import faiss
@@ -25,6 +26,24 @@ CACHE_MAGIC = 0x5241_4331  # "RAG1"
 CACHE_VERSION = 1
 DEFAULT_PROVIDER = "voyage"
 DEFAULT_MODEL = "voyage-code-3"
+
+
+def install_legacy_pickle_shims() -> None:
+    """Provide the old model class names needed to unpickle chunk records."""
+    if "ragrep.models" in sys.modules:
+        return
+
+    pkg = types.ModuleType("ragrep")
+    pkg.__path__ = []
+    models = types.ModuleType("ragrep.models")
+
+    for name in ("Document", "Chunk", "SearchResult", "IndexStats"):
+        cls = type(name, (), {"__module__": "ragrep.models"})
+        setattr(models, name, cls)
+
+    pkg.models = models
+    sys.modules["ragrep"] = pkg
+    sys.modules["ragrep.models"] = models
 
 
 def resolve_embedding(repo_root: Path) -> tuple[str, str]:
@@ -66,6 +85,7 @@ def migrate_chunks(index_dir: Path) -> None:
     if not src.exists():
         sys.exit(f"missing: {src}")
 
+    install_legacy_pickle_shims()
     with open(src, "rb") as f:
         chunks = pickle.load(f)
 

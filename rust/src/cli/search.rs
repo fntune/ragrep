@@ -239,17 +239,22 @@ struct ServerResult {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
-    rerank: Option<f32>,
+    score: Option<f64>,
     #[serde(default)]
-    rrf: Option<f32>,
+    rerank: Option<f64>,
     #[serde(default)]
-    dense: Option<f32>,
+    rrf: Option<f64>,
     #[serde(default)]
-    bm25: Option<f32>,
+    dense: Option<f64>,
+    #[serde(default)]
+    bm25: Option<f64>,
 }
 
 fn server_scores_inline(r: &ServerResult) -> String {
     let mut parts = Vec::new();
+    if let Some(v) = r.score {
+        parts.push(format!("score={v:.3}"));
+    }
     if let Some(v) = r.rerank {
         parts.push(format!("rerank={v:.3}"));
     }
@@ -387,7 +392,7 @@ fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchA
             n: args.n,
             top_k_dense: cfg.retrieval.top_k_dense,
             top_k_bm25: cfg.retrieval.top_k_bm25,
-            // Match Python's `fetch_n = max(n*4, 20)` in search.py::search_hybrid.
+            // Keep a wider rerank pool than the final result count.
             rerank_pool: (args.n * 4).max(20),
             rrf_k: cfg.retrieval.rrf_k,
             rerank_provider: &cfg.reranker.provider,
@@ -426,7 +431,7 @@ fn print_human(
     for h in hits {
         let r = &h.result;
         let score_str = if args.scores {
-            scores_inline(r)
+            scores_inline(r, mode)
         } else {
             String::new()
         };
@@ -446,19 +451,17 @@ fn print_human(
     }
 }
 
-fn scores_inline(r: &SearchResult) -> String {
+fn scores_inline(r: &SearchResult, mode: &str) -> String {
     let mut parts = Vec::new();
-    if r.rerank_score != 0.0 {
-        parts.push(format!("rerank={:.3}", r.rerank_score));
-    }
-    if r.rrf_score != 0.0 {
-        parts.push(format!("rrf={:.3}", r.rrf_score));
-    }
-    if r.dense_score != 0.0 {
-        parts.push(format!("dense={:.3}", r.dense_score));
-    }
-    if r.bm25_score != 0.0 {
-        parts.push(format!("bm25={:.3}", r.bm25_score));
+    match mode {
+        "semantic" => parts.push(format!("score={:.3}", r.dense_score)),
+        "hybrid" => {
+            parts.push(format!("rerank={:.3}", r.rerank_score));
+            parts.push(format!("rrf={:.3}", r.rrf_score));
+            parts.push(format!("dense={:.3}", r.dense_score));
+            parts.push(format!("bm25={:.3}", r.bm25_score));
+        }
+        _ => {}
     }
     parts.join("  ")
 }
@@ -474,13 +477,15 @@ struct JsonHit<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rerank: Option<f32>,
+    score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rrf: Option<f32>,
+    rerank: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    dense: Option<f32>,
+    rrf: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    bm25: Option<f32>,
+    dense: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bm25: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<&'a std::collections::BTreeMap<String, MetaValue>>,
 }
@@ -502,7 +507,7 @@ fn print_json(
     args: &SearchArgs,
 ) -> Result<()> {
     let context = if args.json && !args.full && args.context == 200 {
-        // Mirror Python: in JSON mode, default to no snippet unless explicitly set.
+        // JSON mode defaults to compact records unless context/full is explicit.
         0
     } else {
         args.context
@@ -527,10 +532,11 @@ fn print_json(
                 title,
                 snippet: snippet_v,
                 content: content_v,
-                rerank: opt_score(r.rerank_score, args.scores),
-                rrf: opt_score(r.rrf_score, args.scores),
-                dense: opt_score(r.dense_score, args.scores),
-                bm25: opt_score(r.bm25_score, args.scores),
+                score: semantic_score(r.dense_score, mode, args.scores),
+                rerank: hybrid_score(r.rerank_score, mode, args.scores),
+                rrf: hybrid_score(r.rrf_score, mode, args.scores),
+                dense: hybrid_score(r.dense_score, mode, args.scores),
+                bm25: hybrid_score(r.bm25_score, mode, args.scores),
                 metadata: if args.metadata {
                     Some(&r.metadata)
                 } else {
@@ -561,12 +567,24 @@ fn truncate_title(title: &str) -> String {
     }
 }
 
-fn opt_score(v: f32, on: bool) -> Option<f32> {
-    if on && v != 0.0 {
-        Some((v * 1000.0).round() / 1000.0)
+fn semantic_score(v: f32, mode: &str, on: bool) -> Option<f64> {
+    if on && mode == "semantic" {
+        Some(round_score(v))
     } else {
         None
     }
+}
+
+fn hybrid_score(v: f32, mode: &str, on: bool) -> Option<f64> {
+    if on && mode == "hybrid" {
+        Some(round_score(v))
+    } else {
+        None
+    }
+}
+
+fn round_score(v: f32) -> f64 {
+    ((v as f64) * 1000.0).round() / 1000.0
 }
 
 fn snippet(content: &str, length: usize, term: &str) -> String {
@@ -601,4 +619,39 @@ fn snippet(content: &str, length: usize, term: &str) -> String {
         s.push_str("...");
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_semantic_scores_use_score_field() {
+        assert_eq!(semantic_score(0.98765, "semantic", true), Some(0.988));
+        assert_eq!(hybrid_score(0.98765, "semantic", true), None);
+    }
+
+    #[test]
+    fn local_hybrid_scores_include_zero_values() {
+        assert_eq!(semantic_score(0.25, "hybrid", true), None);
+        assert_eq!(hybrid_score(0.0, "hybrid", true), Some(0.0));
+    }
+
+    #[test]
+    fn server_semantic_score_prints_inline() {
+        let result = ServerResult {
+            rank: 1,
+            id: "chunk".to_string(),
+            source: "git".to_string(),
+            title: "title".to_string(),
+            snippet: None,
+            content: None,
+            score: Some(0.5),
+            rerank: None,
+            rrf: None,
+            dense: None,
+            bm25: None,
+        };
+        assert_eq!(server_scores_inline(&result), "score=0.500");
+    }
 }

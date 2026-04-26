@@ -10,9 +10,6 @@
 #   3. Verifies the sha256 checksum.
 #   4. Installs to ~/.local/bin/ragrep.
 #
-# Use --legacy to install the old Python distribution via uv:
-#   curl -fsSL https://ragrep.cc/install.sh | sh -s -- --legacy
-#
 # Read this script before running it: https://ragrep.cc/install.sh
 
 set -eu
@@ -25,27 +22,16 @@ info()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 warn()  { printf '\033[1;33mwarn:\033[0m %s\n' "$1" 1>&2; }
 fail()  { printf '\033[1;31merror:\033[0m %s\n' "$1" 1>&2; exit 1; }
 
-# ---- legacy (Python via uv) ----------------------------------------------
-legacy_install() {
-    info "Installing the legacy Python distribution via uv."
-    if ! command -v uv >/dev/null 2>&1; then
-        info "uv not found — installing it from astral.sh first..."
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
-        command -v uv >/dev/null 2>&1 || fail "uv installed but not on PATH. Open a new shell and re-run."
-    fi
-    uv tool install --force "ragrep[full] @ git+https://github.com/${REPO}"
-    info "Installed (legacy/Python). Try: ragrep --help"
-    exit 0
-}
-
 case "${1:-}" in
-    --legacy) legacy_install ;;
     --help|-h)
         printf 'ragrep installer\n\n'
         printf 'Usage:  curl -fsSL https://ragrep.cc/install.sh | sh\n'
-        printf '        curl -fsSL https://ragrep.cc/install.sh | sh -s -- --legacy\n'
         exit 0
+        ;;
+    "")
+        ;;
+    *)
+        fail "unknown option: $1"
         ;;
 esac
 

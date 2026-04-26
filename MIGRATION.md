@@ -1,15 +1,15 @@
-# Python Index Migration
+# Old Index Migration
 
-The Rust runtime does not read the old Python index files directly.
+The Rust runtime does not read old Python-built indexes directly.
 
-Python runtime layout:
+Old layout:
 
 - `faiss.index`
 - `chunks.pkl`
 - `bm25.pkl`
 - `embed_cache.pkl`
 
-Rust runtime layout:
+Rust layout:
 
 - `embeddings.bin`
 - `chunks.msgpack`
@@ -18,11 +18,11 @@ Rust runtime layout:
 
 ## Migrate An Existing Index
 
-Run the migration script inside the Python environment that can still import the old dependencies and read the pickles:
+Run the migration helper in an environment that has the old pickle dependencies available:
 
 ```bash
-uv sync --extra full --extra dev
-uv run python tools/migrate.py data/index
+python -m pip install faiss-cpu numpy msgpack
+python tools/migrate.py data/index
 ```
 
 Then rebuild BM25 in the Rust format:
@@ -56,7 +56,6 @@ cargo run --manifest-path rust/Cargo.toml -- ingest --config config.toml
 
 ## Notes
 
-- Keep `tools/migrate.py` until the transition window closes. It is intentionally Python because pickle and FAISS migration are Python-owned legacy concerns.
-- The Rust v1 runtime supports HTTP embedding providers: Voyage, OpenAI, and Gemini. It does not load local sentence-transformers models.
-- If your Python index used sentence-transformers, create a fresh Rust index with an HTTP provider before comparing semantic or hybrid results. Grep parity is independent of embedding provider.
-- Upload Rust server indexes to GCS with the Rust filenames: `embeddings.bin`, `chunks.msgpack`, and `bm25.msgpack`. The Cloud Run server does not download `faiss.index`, `chunks.pkl`, or `bm25.pkl`.
+- `tools/migrate.py` is the only retained Python file. It exists solely to read `faiss.index`, `chunks.pkl`, and `embed_cache.pkl`.
+- If the old index used sentence-transformers, build a fresh Rust index with an HTTP provider before comparing semantic or hybrid results. Grep parity is independent of embedding provider.
+- Upload Rust server indexes to GCS with the Rust filenames: `embeddings.bin`, `chunks.msgpack`, and `bm25.msgpack`.

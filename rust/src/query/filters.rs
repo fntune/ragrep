@@ -1,9 +1,7 @@
 //! Metadata filters + relative-date parsing.
 //!
-//! Mirrors `parse_filters`, `parse_date`, `matches_filters` in
-//! `src/ragrep/search.py`. Date format is YYYY-MM-DD; relative shorthand
-//! `Nd`/`Nw`/`Nm`/`Ny` resolves against today (matching Python's
-//! `date.today() - timedelta(...)`).
+//! Date format is YYYY-MM-DD; relative shorthand `Nd`/`Nw`/`Nm`/`Ny` resolves
+//! against today.
 
 use std::collections::BTreeMap;
 

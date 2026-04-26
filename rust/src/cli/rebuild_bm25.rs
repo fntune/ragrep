@@ -7,9 +7,7 @@ use clap::Args;
 use crate::config;
 use crate::index::{bm25::Bm25, store};
 
-/// Rebuild bm25.msgpack from chunks.msgpack. Transitional bridge for
-/// indexes that came from the Python release (where bm25.pkl was dropped
-/// during migration).
+/// Rebuild bm25.msgpack from chunks.msgpack.
 #[derive(Args, Debug)]
 pub struct RebuildBm25Args {
     /// Path to config.toml.

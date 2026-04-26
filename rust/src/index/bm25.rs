@@ -1,7 +1,7 @@
 //! Okapi BM25 over whitespace+lowercase tokens.
 //!
-//! Mirrors `rank_bm25.BM25Okapi` (which `src/ragrep/ingest/store.py` uses):
-//! same k1=1.5, b=0.75, IDF formula `ln((N - df + 0.5) / (df + 0.5) + 1)`.
+//! Uses k1=1.5, b=0.75, and IDF formula
+//! `ln((N - df + 0.5) / (df + 0.5) + 1)`.
 
 use std::collections::HashMap;
 

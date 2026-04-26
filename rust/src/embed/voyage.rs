@@ -1,7 +1,4 @@
 //! Voyage AI embeddings — direct HTTP, no SDK.
-//!
-//! Mirrors the post-`voyageai`-removal Python implementation in
-//! `src/ragrep/ingest/embed.py::VoyageEmbedder` (httpx + retry/backoff).
 
 use std::env;
 use std::fs::File;

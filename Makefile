@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 -include .env
 export
 .PHONY: help install scrape ingest query stats eval inspect check test clean serve \
-        upload-index download-index requirements.txt
+        upload-index download-index
 
 CONFIG ?= config.toml
 LOG_LEVEL ?= INFO
@@ -12,15 +12,15 @@ RAGREP := cargo run --manifest-path rust/Cargo.toml --
 INDEX_FILES := embeddings.bin chunks.msgpack bm25.msgpack
 
 help:
-	@echo "ragrep — hybrid FAISS + BM25 RAG pipeline"
+	@echo "ragrep — Rust hybrid retrieval pipeline"
 	@echo ""
 	@echo "Setup:"
-	@echo "  install          Create venv and install dependencies"
+	@echo "  install          Build the release binary"
 	@echo ""
 	@echo "Pipeline:"
 	@echo "  scrape           Scrape data from sources (SOURCE=slack|git|atlassian|gdrive|bitbucket|files)"
-	@echo "  ingest           Build FAISS + BM25 index from raw data"
-	@echo "  query            Query the index (Q='question' or interactive REPL)"
+	@echo "  ingest           Build embeddings.bin + chunks.msgpack + bm25.msgpack"
+	@echo "  query            Query the index (Q='question')"
 	@echo "  stats            Show index statistics"
 	@echo "  eval             Run evaluation harness"
 	@echo "  inspect          Inspect raw data and pipeline output"
@@ -37,7 +37,7 @@ help:
 	@echo "  test             Run tests"
 	@echo "  clean            Remove data/index/ directory"
 	@echo ""
-	@echo "Search (activate venv first):"
+	@echo "Search:"
 	@echo "  ragrep <term> [-n 5] [-s git] [--full]"
 	@echo "  ragrep <term> --server http://localhost:8321"
 
@@ -65,12 +65,6 @@ download-index:
 # Server
 serve:
 	$(RAGREP) serve --config $(CONFIG) --port 8321
-
-# Cloud Run deployment helpers
-requirements.txt: pyproject.toml uv.lock
-	@uv export --format requirements-txt --no-hashes --no-dev --no-emit-project --no-header \
-		--extra serve 2>/dev/null > requirements.txt
-	@echo "Generated requirements.txt"
 
 # Pipeline commands
 scrape:

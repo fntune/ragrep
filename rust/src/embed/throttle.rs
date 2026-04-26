@@ -1,10 +1,9 @@
 //! Adaptive rate-limit throttle.
 //!
-//! Direct port of `_AdaptiveThrottle` from `src/ragrep/ingest/embed.py:39`.
 //! Starts conservative (30s for Voyage free tier with 16-chunk batches),
 //! decays delay after consecutive successes, backs off on rate-limit, remembers
 //! the boundary so it doesn't immediately probe below the failed delay again.
-//! The floor decays over time so probing eventually resumes (matches Python).
+//! The floor decays over time so probing eventually resumes.
 
 use std::thread;
 use std::time::Duration;

@@ -1,9 +1,8 @@
 //! Recursive token-based document chunking.
 //!
-//! Direct port of `src/ragrep/ingest/chunk.py`. The token estimator is a
-//! heuristic — `max(word_count, len_bytes/4)` — chosen over a real
-//! tokenizer (tiktoken etc.) because it handles tab-delimited content like
-//! CSV exports and code where real tokenizers underestimate.
+//! The token estimator is `max(word_count, len_bytes/4)`, chosen over a real
+//! tokenizer because it handles tab-delimited content like CSV exports and code
+//! where real tokenizers underestimate.
 
 use crate::models::{Chunk, Document, MetaValue};
 

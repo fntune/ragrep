@@ -1,6 +1,4 @@
 //! Ingest orchestrator: scrape → normalize → chunk → embed → store.
-//!
-//! Mirrors `src/ragrep/ingest/pipeline.py::ingest`.
 
 use std::collections::BTreeMap;
 use std::fs::File;

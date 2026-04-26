@@ -1,13 +1,13 @@
 # ragrep
 
-> **ripgrep for your team's knowledge base.**
-> Hybrid retrieval, self-hosted, single binary.
+> ripgrep for your team's knowledge base.
+> Rust binary, hybrid retrieval, self-hosted.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.89%2B-orange.svg)](https://www.rust-lang.org/)
 [![GitHub stars](https://img.shields.io/github/stars/fntune/ragrep?style=social)](https://github.com/fntune/ragrep/stargazers)
 
-Search Slack, Confluence, Jira, Google Drive, Git history, Bitbucket PRs, source code, and local files from one CLI. Ragrep builds a local hybrid index with dense vectors, BM25, and optional Voyage reranking. No SaaS database, no per-seat pricing.
+Search Slack, Confluence, Jira, Google Drive, Git history, Bitbucket PRs, source code, and local files from one native CLI. Ragrep builds a local Rust index with memory-mapped vectors, BM25, and optional Voyage reranking. No hosted database and no per-seat service.
 
 ```bash
 curl -fsSL https://ragrep.cc/install.sh | sh
@@ -17,10 +17,11 @@ ragrep "how does the auth flow work"
 
 ## Why Ragrep
 
-- **Hybrid retrieval.** Dense cosine search over `embeddings.bin` combines with BM25 via Reciprocal Rank Fusion, then reranks when configured.
-- **Self-hosted.** Your data stays on your laptop, VM, or Cloud Run. The runtime index is `embeddings.bin`, `chunks.msgpack`, and `bm25.msgpack`.
+- **Native binary.** Install one Rust executable from GitHub Releases.
+- **Hybrid retrieval.** Dense vector search combines with BM25 through Reciprocal Rank Fusion, then reranks when configured.
+- **Self-hosted.** Your index is local files: `embeddings.bin`, `chunks.msgpack`, and `bm25.msgpack`.
 - **Incremental ingest.** Content-hash embedding cache means re-indexing only embeds changed chunks.
-- **Fast distribution.** The default install path is a native Rust binary from GitHub Releases. The old Python install remains available with `--legacy` during migration.
+- **Agent-friendly.** CLI and server modes both support JSON output for scripts and local agents.
 
 ## Install
 
@@ -29,12 +30,6 @@ curl -fsSL https://ragrep.cc/install.sh | sh
 ```
 
 The installer detects OS/arch, downloads `ragrep-${target}.tar.gz` from GitHub Releases, verifies its `.sha256`, and installs to `~/.local/bin/ragrep`.
-
-Legacy Python install:
-
-```bash
-curl -fsSL https://ragrep.cc/install.sh | sh -s -- --legacy
-```
 
 Build from source:
 
@@ -73,6 +68,12 @@ ragrep "query"
 
 For Cloud Run `*.run.app` servers, the CLI attempts `gcloud auth print-identity-token` and sends it as a bearer token.
 
+JSON score fields are stable for clients:
+
+- `grep`: no score fields.
+- `semantic --scores`: `score`.
+- `hybrid --scores`: `rerank`, `rrf`, `dense`, and `bm25`.
+
 ## Data Sources
 
 | Source | What it ingests | Required credentials |
@@ -80,7 +81,7 @@ For Cloud Run `*.run.app` servers, the CLI attempts `gcloud auth print-identity-
 | `slack` | Messages, threads, pins, bookmarks, file contents | `SLACK_TOKEN` |
 | `atlassian` | Confluence pages, Jira issues + comments | `CONFLUENCE_URL`, `JIRA_URL`, `ATLASSIAN_USERNAME`, `ATLASSIAN_API_TOKEN` |
 | `gdrive` | Docs, Sheets, Slides, text-like Drive files | `GOOGLE_APPLICATION_CREDENTIALS` service account/ADC, or `GOOGLE_ACCESS_TOKEN` |
-| `git` | Commit messages, changed files, PR metadata from local repos | local filesystem |
+| `git` | Commit messages, diffs, changed files, PR metadata from local repos | local filesystem |
 | `code` | Tracked source files from configured repos | local filesystem |
 | `bitbucket` | PR descriptions, comments, approvals | `BITBUCKET_ACCESS_TOKEN` or `BITBUCKET_OAUTH_SECRET` |
 | `files` | Text files locally; PDFs/Office/images through Gemini extraction | `GEMINI_API_KEY` for multimodal extraction |
@@ -140,7 +141,7 @@ ragrep serve --host 0.0.0.0 --port 8080
 
 ## Providers
 
-Embedding providers are HTTP-only in the Rust port:
+Embedding providers are HTTP-only in the Rust runtime:
 
 | Provider | Default model | Env var |
 |----------|---------------|---------|
@@ -148,13 +149,13 @@ Embedding providers are HTTP-only in the Rust port:
 | `openai` | configured in `config.toml` | `OPENAI_API_KEY` |
 | `gemini` | configured in `config.toml` | `GEMINI_API_KEY` |
 
-Reranking currently supports Voyage (`rerank-2.5`). Local sentence-transformers remains a legacy Python capability and is not part of the Rust v1 runtime.
+Reranking currently supports Voyage (`rerank-2.5`).
 
 ## Migration
 
 Existing Python-built indexes use `faiss.index`, `chunks.pkl`, and `bm25.pkl`. The Rust runtime uses `embeddings.bin`, `chunks.msgpack`, and `bm25.msgpack`.
 
-See [MIGRATION.md](./MIGRATION.md) for the migration path and the current sentence-transformers regression note.
+See [MIGRATION.md](./MIGRATION.md) for the old-index migration path.
 
 ## Development
 

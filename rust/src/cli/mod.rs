@@ -34,9 +34,9 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Cmd {
-    /// Run the HTTP search server (replaces FastAPI/uvicorn).
+    /// Run the HTTP search server.
     Serve(serve::ServeArgs),
-    /// Build the FAISS + BM25 index from raw scraped data.
+    /// Build the vector + BM25 index from raw scraped data.
     Ingest(ingest::IngestArgs),
     /// Scrape sources into data/raw/.
     Scrape(scrape::ScrapeArgs),
@@ -46,7 +46,7 @@ pub enum Cmd {
     Stats(stats::StatsArgs),
     /// Inspect raw data and pipeline output.
     Inspect(inspect::InspectArgs),
-    /// Rebuild bm25.msgpack from chunks.msgpack (transitional, for pickle-migrated indexes).
+    /// Rebuild bm25.msgpack from chunks.msgpack.
     #[command(name = "rebuild-bm25")]
     RebuildBm25(rebuild_bm25::RebuildBm25Args),
 }

@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ragrep — hybrid retrieval, self-hosted</title>
-  <meta name="description" content="ripgrep for your team's knowledge base. Hybrid retrieval over Slack, Confluence, Drive, Git, and files. Self-hosted, single command.">
-  <meta name="keywords" content="rag, retrieval-augmented generation, hybrid search, semantic search, faiss, bm25, knowledge base, slack search, confluence search, self-hosted">
+  <title>ragrep — Rust knowledge search</title>
+  <meta name="description" content="Rust binary for self-hosted hybrid retrieval over Slack, Confluence, Drive, Git, source code, and files.">
+  <meta name="keywords" content="rag, retrieval-augmented generation, rust cli, hybrid search, semantic search, bm25, knowledge base, slack search, confluence search, self-hosted">
 
-  <meta property="og:title" content="ragrep — hybrid retrieval, self-hosted">
-  <meta property="og:description" content="ripgrep for your team's knowledge base. Hybrid retrieval, self-hosted, single command.">
+  <meta property="og:title" content="ragrep — Rust knowledge search">
+  <meta property="og:description" content="Self-hosted hybrid retrieval in one native Rust binary.">
   <meta property="og:url" content="https://ragrep.cc">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="ragrep — hybrid retrieval, self-hosted">
-  <meta name="twitter:description" content="ripgrep for your team's knowledge base. Hybrid retrieval, self-hosted, single command.">
+  <meta name="twitter:title" content="ragrep — Rust knowledge search">
+  <meta name="twitter:description" content="Self-hosted hybrid retrieval in one native Rust binary.">
 
   <link rel="canonical" href="https://ragrep.cc">
 
@@ -105,7 +105,7 @@
 </head>
 <body>
   <h1>ragrep</h1>
-  <p class="tagline"><strong>ripgrep for your team's knowledge base.</strong><br>Hybrid retrieval, self-hosted, single command.</p>
+  <p class="tagline"><strong>ripgrep for your team's knowledge base.</strong><br>Rust binary, hybrid retrieval, self-hosted.</p>
 
   <pre><button class="copy" onclick="copyInstall(this)">copy</button><code>curl -fsSL https://ragrep.cc/install.sh | sh</code></pre>
 
@@ -127,9 +127,10 @@
 
   <h2>Why</h2>
   <div class="why">
-    <p><strong>Hybrid retrieval, not just embeddings.</strong> FAISS&nbsp;+&nbsp;BM25&nbsp;+&nbsp;reranking, fused with RRF. Recalls cross-source content that pure dense or pure sparse misses.</p>
-    <p><strong>Self-hosted, no lock-in.</strong> Your data stays on your machine. The index is three files you can <code>cp</code> or version-control.</p>
-    <p><strong>Multi-source ingest.</strong> Slack, Confluence, Jira, Drive, Git, Bitbucket, local files — out of the box. Content-hash dedup means re-indexing only embeds what changed.</p>
+    <p><strong>Native Rust install.</strong> One binary from GitHub Releases. No runtime bootstrap before <code>ragrep</code> is on PATH.</p>
+    <p><strong>Hybrid retrieval, not just embeddings.</strong> Memory-mapped vectors + BM25 + reranking, fused with RRF. Recalls cross-source content that pure dense or pure sparse misses.</p>
+    <p><strong>Self-hosted, no lock-in.</strong> Your data stays on your machine or server. The runtime index is <code>embeddings.bin</code>, <code>chunks.msgpack</code>, and <code>bm25.msgpack</code>.</p>
+    <p><strong>Multi-source ingest.</strong> Slack, Confluence, Jira, Drive, Git, Bitbucket, source code, and local files. Content-hash dedup means re-indexing only embeds what changed.</p>
   </div>
 
   <h2>Try it</h2>
@@ -137,7 +138,8 @@
 ragrep "how does the auth flow work"
 ragrep "deploy" -m grep                 <span class="cmt"># exact substring</span>
 ragrep "incident" -s slack --after 2w   <span class="cmt"># filter source + date</span>
-ragrep "auth" --json | jq               <span class="cmt"># for agents/scripts</span></code></pre>
+ragrep "auth" --json --scores | jq      <span class="cmt"># for agents/scripts</span>
+ragrep serve --host 0.0.0.0 --port 8321 <span class="cmt"># self-hosted HTTP</span></code></pre>
 
   <div class="links">
     <a href="https://github.com/fntune/ragrep">GitHub →</a>

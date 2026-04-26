@@ -1,8 +1,7 @@
 //! Source-specific normalizers: raw JSONL → `Document`.
 //!
-//! Mirrors `src/ragrep/ingest/normalize.py`. Each submodule reads one source's
-//! JSONL file and emits `Vec<Document>`. `normalize_all` runs them all and
-//! dedups by `Document.id`.
+//! Each submodule reads one source's JSONL file and emits `Vec<Document>`.
+//! `normalize_all` runs them all and dedups by `Document.id`.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;

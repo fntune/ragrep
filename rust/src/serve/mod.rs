@@ -1,4 +1,4 @@
-//! HTTP search service. Mirrors `src/ragrep/server.py`.
+//! HTTP search service.
 
 pub mod auth;
 pub mod search;

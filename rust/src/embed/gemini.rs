@@ -1,8 +1,7 @@
 //! Google Gemini embeddings — direct HTTP, no SDK.
 //!
-//! Mirrors `GeminiEmbedder` from `src/ragrep/ingest/embed.py:564`. Uses the
-//! `batchEmbedContents` endpoint for the document path (up to 100 inputs
-//! per call) and `embedContent` for one-shot queries.
+//! Uses the `batchEmbedContents` endpoint for the document path (up to 100
+//! inputs per call) and `embedContent` for one-shot queries.
 
 use std::env;
 use std::path::Path;

@@ -47,7 +47,7 @@ pub struct GrepResult {
 }
 
 /// Case-insensitive substring search over chunks. Returns the top `n` matches
-/// plus the total match count. Mirrors `search_grep` in `src/ragrep/search.py`.
+/// plus the total match count.
 pub fn grep(chunks: &[Chunk], term: &str, filt: &Filters<'_>, n: usize) -> GrepResult {
     let needle = term.to_lowercase();
     let filtered = chunks
@@ -92,7 +92,6 @@ pub struct SemanticResult {
 
 /// Dense vector search via mmapped flat index. Returns top `n` hits with
 /// `dense_score` populated. If `source` is set, fetches `n*3` then post-filters.
-/// Mirrors `dense_search` in `src/ragrep/query/retrieve.py`.
 pub fn semantic(
     flat: &Flat,
     chunks: &[Chunk],
@@ -149,8 +148,7 @@ pub struct HybridOpts<'a> {
     pub n: usize,
     pub top_k_dense: usize,
     pub top_k_bm25: usize,
-    /// Candidates passed to the reranker. Mirrors Python's
-    /// `fetch_n = max(n*4, 20)` from `search.py::search_hybrid`.
+    /// Candidates passed to the reranker.
     pub rerank_pool: usize,
     pub rrf_k: usize,
     pub rerank_provider: &'a str,
@@ -159,7 +157,6 @@ pub struct HybridOpts<'a> {
 }
 
 /// Hybrid retrieval: dense + BM25 → RRF fusion → rerank top-`n`.
-/// Mirrors `retrieve()` + Voyage rerank from `src/ragrep/search.py`.
 pub fn hybrid(
     flat: &Flat,
     bm25_idx: &Bm25,

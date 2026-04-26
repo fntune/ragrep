@@ -1,6 +1,4 @@
 //! OpenAI embeddings — direct HTTP, no SDK.
-//!
-//! Mirrors `OpenAIEmbedder` from `src/ragrep/ingest/embed.py:393`.
 
 use std::env;
 use std::path::Path;
@@ -16,9 +14,8 @@ const BASE: &str = "https://api.openai.com/v1";
 const ENV_KEY: &str = "OPENAI_API_KEY";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const PROVIDER: &str = "openai";
-/// OpenAI's `/v1/embeddings` accepts up to 2048 inputs. We cap at 64 to mirror
-/// the Python implementation; smaller batches mean lower request bursts under
-/// the same total throughput.
+/// OpenAI's `/v1/embeddings` accepts up to 2048 inputs. Smaller batches mean
+/// lower request bursts under the same total throughput.
 const MAX_API_BATCH: usize = 64;
 const MAX_ATTEMPTS: u32 = 5;
 

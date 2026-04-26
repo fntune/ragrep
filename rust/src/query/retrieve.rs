@@ -1,6 +1,4 @@
 //! Hybrid retrieval primitives: dense + BM25 + RRF fusion.
-//!
-//! Mirrors `src/ragrep/query/retrieve.py`.
 
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
