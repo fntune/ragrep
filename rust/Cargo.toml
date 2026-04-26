@@ -28,6 +28,7 @@ rayon = "1"
 sha2 = "0.10"
 regex = "1"
 time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
+glob = "0.3"
 
 # serialization
 serde = { version = "1", features = ["derive"] }
