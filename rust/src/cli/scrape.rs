@@ -34,9 +34,13 @@ pub fn run(args: ScrapeArgs) -> Result<()> {
             "slack" => {
                 scrape::slack::scrape(&raw_dir, &cfg.scrape.slack)?;
             }
-            "atlassian" => bail!("ragrep scrape atlassian is not yet implemented in the Rust port"),
+            "atlassian" => {
+                scrape::atlassian::scrape(&raw_dir, &cfg.scrape.atlassian)?;
+            }
             "gdrive" => bail!("ragrep scrape gdrive is not yet implemented in the Rust port"),
-            "bitbucket" => bail!("ragrep scrape bitbucket is not yet implemented in the Rust port"),
+            "bitbucket" => {
+                scrape::bitbucket::scrape(&raw_dir, &cfg.scrape.bitbucket)?;
+            }
             "files" => {
                 extract::extract_all(&raw_dir)?;
             }
