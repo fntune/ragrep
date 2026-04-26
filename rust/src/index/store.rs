@@ -76,3 +76,7 @@ pub fn embeddings_exist(index_dir: &Path) -> bool {
 pub fn bm25_exists(index_dir: &Path) -> bool {
     bm25_path(index_dir).exists()
 }
+
+pub fn index_exists(index_dir: &Path) -> bool {
+    chunks_exist(index_dir) && embeddings_exist(index_dir) && bm25_exists(index_dir)
+}
