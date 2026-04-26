@@ -84,7 +84,7 @@ fn infer_embedding_shape(bytes: u64, chunks: usize) -> Option<(usize, usize)> {
         return None;
     }
     let row_bytes = chunks.checked_mul(std::mem::size_of::<f32>())? as u64;
-    if bytes % row_bytes != 0 {
+    if !bytes.is_multiple_of(row_bytes) {
         return None;
     }
     Some((chunks, (bytes / row_bytes) as usize))

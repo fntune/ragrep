@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Args;
 
+use crate::config;
+use crate::eval::harness;
+
 #[derive(Args, Debug)]
 pub struct EvalArgs {
     /// Save results to file.
@@ -14,7 +17,8 @@ pub struct EvalArgs {
     pub config: Option<PathBuf>,
 }
 
-pub fn run(_args: EvalArgs) -> Result<()> {
-    eprintln!("ragrep eval: not yet implemented in the Rust port (Phase 4)");
-    std::process::exit(1)
+pub fn run(args: EvalArgs) -> Result<()> {
+    let cfg = config::load(args.config.as_deref())?;
+    harness::evaluate(&cfg, args.output.as_deref())?;
+    Ok(())
 }
