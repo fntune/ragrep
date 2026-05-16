@@ -66,6 +66,31 @@ pub async fn handle(
 }
 
 fn do_search(state: &AppState, q: SearchQuery) -> Result<serde_json::Value> {
+    let output = execute(state, &q)?;
+    let results = format_hits(&output.hits, &q);
+    match output.total_matches {
+        Some(total_matches) => Ok(json!({
+            "query": output.query,
+            "mode": output.mode,
+            "total_matches": total_matches,
+            "results": results,
+        })),
+        None => Ok(json!({
+            "query": output.query,
+            "mode": output.mode,
+            "results": results,
+        })),
+    }
+}
+
+pub struct Output {
+    pub query: String,
+    pub mode: String,
+    pub total_matches: Option<usize>,
+    pub hits: Vec<query::Hit>,
+}
+
+pub fn execute(state: &AppState, q: &SearchQuery) -> Result<Output> {
     let filt_metadata = match &q.filter {
         Some(s) if !s.is_empty() => {
             let parts: Vec<String> = s.split(',').map(str::to_string).collect();
@@ -87,21 +112,22 @@ fn do_search(state: &AppState, q: SearchQuery) -> Result<serde_json::Value> {
     match q.mode.as_str() {
         "grep" => {
             let r = query::grep(&state.chunks, &q.q, &filt, q.n);
-            Ok(json!({
-                "query": r.query,
-                "mode": "grep",
-                "total_matches": r.total_matches,
-                "results": format_hits(&r.hits, &q),
-            }))
+            Ok(Output {
+                query: r.query,
+                mode: "grep".to_string(),
+                total_matches: Some(r.total_matches),
+                hits: r.hits,
+            })
         }
         "semantic" => {
             let emb = state.embedder.embed_query(&q.q)?;
             let r = query::semantic(&state.flat, &state.chunks, &q.q, &emb, &filt, q.n);
-            Ok(json!({
-                "query": r.query,
-                "mode": "semantic",
-                "results": format_hits(&r.hits, &q),
-            }))
+            Ok(Output {
+                query: r.query,
+                mode: "semantic".to_string(),
+                total_matches: None,
+                hits: r.hits,
+            })
         }
         "hybrid" => {
             let emb = state.embedder.embed_query(&q.q)?;
@@ -116,11 +142,12 @@ fn do_search(state: &AppState, q: SearchQuery) -> Result<serde_json::Value> {
                 filters: filt,
             };
             let r = query::hybrid(&state.flat, &state.bm25, &state.chunks, &q.q, &emb, opts)?;
-            Ok(json!({
-                "query": r.query,
-                "mode": "hybrid",
-                "results": format_hits(&r.hits, &q),
-            }))
+            Ok(Output {
+                query: r.query,
+                mode: "hybrid".to_string(),
+                total_matches: None,
+                hits: r.hits,
+            })
         }
         m => bail!("invalid mode: {m}"),
     }

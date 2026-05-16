@@ -46,10 +46,11 @@ Sync and admin behavior:
   `embeddings.bin`, and `bm25.msgpack` are published as one generation.
 - `ragrep ingest --source <source>` replaces only chunks from that source and
   preserves the other sources already in the runtime index.
+- `/knowledge/search` returns the article and video shapes consumed by
+  `support-chatbot`, backed by the current ragrep search engine.
 
 ## Remaining Ragrep Gaps
 
-- `/search` returns generic chunks, not a support-app article/video contract.
 - Ragrep has no first-class upsert/delete/list/fetch record API. The current
   model is scrape raw files, normalize, ingest, and serve.
 - `ragrep serve` loads the index at startup. A production replacement needs a
@@ -59,10 +60,7 @@ Sync and admin behavior:
 
 - [x] Atomic runtime index publication.
 - [x] Source-scoped ingest that preserves other sources.
-- [ ] Support knowledge result contract.
-   Add a narrow HTTP contract that returns article and video records in the
-   shapes `support-chatbot` already consumes, backed by ragrep metadata and
-   source filters. Keep `/search` stable.
+- [x] Support knowledge result contract.
 - [ ] Record sync commands for support sources.
    Add a support-source ingestion path that writes Freshdesk and YouTube raw
    records with stable IDs and metadata, then invokes source-scoped ingest. Do
@@ -78,6 +76,6 @@ Sync and admin behavior:
 
 ## Next Task
 
-Add the support knowledge result contract. It should translate existing ragrep
-hits into the article and video result shapes used by `support-chatbot` while
-leaving the general `/search` contract stable.
+Add record sync commands for support sources. They should write Freshdesk and
+YouTube records into ragrep-owned raw data, then call source-scoped ingest so
+the support application does not need filesystem access to mutate the index.

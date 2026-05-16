@@ -24,6 +24,8 @@ The tracked Python runtime and package metadata are removed. The only retained P
   - `grep`: no score fields.
   - `semantic`: `score` when scores are enabled.
   - `hybrid`: `rerank`, `rrf`, `dense`, and `bm25` when scores are enabled.
+- `/knowledge/search` returns support-oriented `knowledges`, `videos`, and
+  `youtube_search` fields without changing the generic `/search` contract.
 
 ## Old Index Migration
 

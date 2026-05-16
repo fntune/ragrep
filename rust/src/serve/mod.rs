@@ -1,6 +1,7 @@
 //! HTTP search service.
 
 pub mod auth;
+pub mod knowledge;
 pub mod search;
 
 use std::sync::Arc;
@@ -40,6 +41,7 @@ impl AppState {
 pub fn router(state: Arc<AppState>, auth_policy: auth::Policy) -> Router {
     auth::apply(
         Router::new()
+            .route("/knowledge/search", get(knowledge::handle))
             .route("/search", get(search::handle))
             .route("/health", get(health))
             .with_state(state)

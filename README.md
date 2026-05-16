@@ -119,6 +119,7 @@ ragrep serve --host 0.0.0.0 --port 8321
 
 curl "http://localhost:8321/health"
 curl "http://localhost:8321/search?q=auth+flow&mode=grep&n=5"
+curl "http://localhost:8321/knowledge/search?q=kyc&mode=grep&portal_id=80000083721"
 ```
 
 Server index resolution:
