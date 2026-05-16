@@ -8,7 +8,7 @@ This tasklist groups the Pinecone replacement work into PR-sized chunks. Each ch
 - [x] Search contract tests: cover grep, semantic, hybrid formatting, metadata filters, dates, and HTTP search responses without requiring external model calls.
 - [x] Metadata filters: replace substring-only flat filters with a small query contract that supports exact values, `$or`, and typed metadata.
 - [x] Collection catalog: add a persisted record contract for upsert, fetch metadata by ids, list ids by metadata, delete, count, clear, and document export.
-- [ ] Collection search API: connect collection records to indexed search without requiring callers to know chunk/index internals.
+- [x] Collection search API: connect collection records to indexed search without requiring callers to know chunk/index internals.
 - [ ] Mutable persistence: define how FAISS/BM25/chunks update safely after record changes, including compaction or rebuild triggers.
 - [ ] Server write surface: expose authenticated collection endpoints that support support-chatbot sync jobs without sharing local filesystem state.
 - [ ] Deployment contract: document index storage, rebuild flow, backup/restore, and readiness behavior for a long-running internal service.

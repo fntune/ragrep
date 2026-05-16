@@ -7,6 +7,7 @@ from ragrep.config import Config
 from ragrep.ingest.embed import make_embedder
 from ragrep.ingest.store import load_index, load_multi_index, model_key
 from ragrep.models import QueryResult, SearchResult
+from ragrep.query.filter import MetadataFilter
 from ragrep.query.generate import generate
 from ragrep.query.prompt import build_prompt
 from ragrep.query.rerank import make_reranker
@@ -83,7 +84,7 @@ class QueryEngine:
         self,
         question: str,
         source_filter: str | None = None,
-        metadata_filter: dict[str, str] | None = None,
+        metadata_filter: MetadataFilter | None = None,
         no_generate: bool = False,
     ) -> QueryResult:
         """Run the full query pipeline."""

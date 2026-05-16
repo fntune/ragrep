@@ -3,10 +3,10 @@
 
 
 def __getattr__(name: str):
-    if name in ("Catalog", "Record"):
-        from ragrep.collection import Catalog, Record
+    if name in ("Catalog", "Record", "RecordHit"):
+        from ragrep.collection import Catalog, Record, RecordHit
 
-        return {"Catalog": Catalog, "Record": Record}[name]
+        return {"Catalog": Catalog, "Record": Record, "RecordHit": RecordHit}[name]
     if name in ("EmbedModel", "Index"):
         from ragrep.index import EmbedModel, Index
 
@@ -18,4 +18,4 @@ def __getattr__(name: str):
     raise AttributeError(f"module 'ragrep' has no attribute {name!r}")
 
 
-__all__ = ["Catalog", "Document", "EmbedModel", "Index", "QueryResult", "Record", "SearchResult"]
+__all__ = ["Catalog", "Document", "EmbedModel", "Index", "QueryResult", "Record", "RecordHit", "SearchResult"]

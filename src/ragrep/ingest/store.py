@@ -41,14 +41,24 @@ def save_index(index_dir: Path, faiss_index: faiss.IndexFlatIP, chunks: list[Chu
         pickle.dump(bm25, f)
 
     log.info("Saved index to %s (faiss.index, chunks.pkl, bm25.pkl)", index_dir)
+    clear_index_cache(index_dir)
 
 
 _index_cache: dict[str, tuple[faiss.IndexFlatIP, list[Chunk], BM25Okapi]] = {}
 
 
+def _cache_key(index_dir: Path) -> str:
+    return str(Path(index_dir).resolve())
+
+
+def clear_index_cache(index_dir: Path) -> None:
+    """Drop cached index state for a path after the index files change."""
+    _index_cache.pop(_cache_key(index_dir), None)
+
+
 def load_index(index_dir: Path) -> tuple[faiss.IndexFlatIP, list[Chunk], BM25Okapi]:
     """Load all index files from disk. Caches by resolved path."""
-    cache_key = str(Path(index_dir).resolve())
+    cache_key = _cache_key(index_dir)
     if cache_key in _index_cache:
         return _index_cache[cache_key]
 
@@ -105,6 +115,7 @@ def save_multi_index(
         faiss.write_index(model_indexes[first_key], str(index_dir / "faiss.index"))
 
     log.info("Saved multi-model index to %s (%d models)", index_dir, len(model_indexes))
+    clear_index_cache(index_dir)
 
 
 def load_multi_index(

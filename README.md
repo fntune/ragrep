@@ -149,6 +149,25 @@ for r in results:
     print(r.score, r.title, r.snippet)
 ```
 
+Mutable record collections can be used when an app owns records and needs article/video-style lifecycle operations:
+
+```python
+from ragrep import Record
+
+index.upsert_records([
+    Record(
+        id="article-1",
+        source="article",
+        title="Funding limits",
+        content="Funding limits depend on account verification...",
+        metadata={"status": 2, "folder_name": "Live Offers"},
+    )
+])
+
+hits = index.search_records("funding limits", metadata_filter={"status": 2})
+metadata = index.fetch_records_metadata(["article-1"])
+```
+
 Multi-model embedding for better recall:
 
 ```python
