@@ -33,7 +33,7 @@ pub fn run(args: IngestArgs) -> Result<()> {
     let cfg = config::load(args.config.as_deref())?;
     let stats = pipeline::run(&cfg, args.force, args.source.as_deref())?;
 
-    if stats.documents == 0 {
+    if stats.documents == 0 && stats.chunks == 0 {
         eprintln!("(no documents found in {})", cfg.raw_dir().display());
         return Ok(());
     }

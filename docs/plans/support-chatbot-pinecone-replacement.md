@@ -40,52 +40,44 @@ Sync and admin behavior:
 - Article admin routes list, fetch, sync, delete, and search article records.
 - Readiness currently treats Pinecone as a required dependency.
 
-## Ragrep Gaps
+## Completed Rust Foundations
 
-- Index publication is file-by-file. A failed or concurrent publish can expose a
-  mixed generation of `chunks.msgpack`, `embeddings.bin`, and `bm25.msgpack`.
-- `ragrep ingest --source <source>` currently rebuilds the runtime index from
-  only that source. That is unsafe for independent Freshdesk and YouTube syncs.
+- Runtime index publication is locked and staged, so `chunks.msgpack`,
+  `embeddings.bin`, and `bm25.msgpack` are published as one generation.
+- `ragrep ingest --source <source>` replaces only chunks from that source and
+  preserves the other sources already in the runtime index.
+
+## Remaining Ragrep Gaps
+
 - `/search` returns generic chunks, not a support-app article/video contract.
 - Ragrep has no first-class upsert/delete/list/fetch record API. The current
   model is scrape raw files, normalize, ingest, and serve.
 - `ragrep serve` loads the index at startup. A production replacement needs a
   clear refresh story after sync publishes a new index.
 
-## PR Chunk Tasks
+## Tasklist
 
-1. Atomic runtime index publication.
-   Publish `chunks.msgpack`, `embeddings.bin`, and `bm25.msgpack` as one runtime
-   generation. Load related runtime files under the same read contract. This is
-   the safety base for external consumers.
-
-2. Source-scoped ingest that preserves other sources.
-   Make `ragrep ingest --source freshdesk` replace only Freshdesk chunks and keep
-   YouTube and other sources intact. This is the minimum safe sync behavior for
-   independent support-chatbot jobs.
-
-3. Support knowledge result contract.
+- [x] Atomic runtime index publication.
+- [x] Source-scoped ingest that preserves other sources.
+- [ ] Support knowledge result contract.
    Add a narrow HTTP contract that returns article and video records in the
    shapes `support-chatbot` already consumes, backed by ragrep metadata and
    source filters. Keep `/search` stable.
-
-4. Record sync commands for support sources.
+- [ ] Record sync commands for support sources.
    Add a support-source ingestion path that writes Freshdesk and YouTube raw
    records with stable IDs and metadata, then invokes source-scoped ingest. Do
    not add a second vector-store abstraction.
-
-5. Service refresh path.
+- [ ] Service refresh path.
    Define and implement how `ragrep serve` observes a newly published index:
    explicit reload endpoint, signal, or process restart contract. Make health
    report the loaded index generation and chunk count.
-
-6. support-chatbot adapter migration.
+- [ ] support-chatbot adapter migration.
    In `support-chatbot`, replace `PineconeApi` with a `KnowledgeIndex` boundary
    that calls ragrep. Update config, readiness, sync services, routes, docs, and
    tests in one coherent migration.
 
-## First Task
+## Next Task
 
-Start with atomic runtime index publication. It lowers the risk of every later
-task and is required before source-specific sync can safely publish indexes used
-by a live support application.
+Add the support knowledge result contract. It should translate existing ragrep
+hits into the article and video result shapes used by `support-chatbot` while
+leaving the general `/search` contract stable.

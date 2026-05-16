@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::embed;
 use crate::index::{bm25::Bm25, store};
 use crate::ingest::{chunk, normalize};
-use crate::models::IngestStats;
+use crate::models::{Chunk, Document, IngestStats};
 
 const CHECKPOINT_FILE: &str = ".embed_checkpoint.bin";
 
@@ -54,18 +54,22 @@ pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<Ing
         docs.retain(|d| d.source == s);
         tracing::info!(target: "ragrep::ingest", "filtered to {} documents (source={s})", docs.len());
     }
-    if docs.is_empty() {
-        tracing::warn!(target: "ragrep::ingest", "no documents to ingest");
-        return Ok(IngestStats::default());
-    }
 
     // 4. Chunk
     tracing::info!(target: "ragrep::ingest", "step 2/4 chunk: {} docs", docs.len());
-    let chunks = chunk::all(
+    let replacement_chunks = chunk::all(
         &docs,
         cfg.ingest.max_chunk_tokens,
         cfg.ingest.chunk_overlap_tokens,
     );
+    let chunks = runtime_chunks(&index_dir, source_filter, replacement_chunks)?;
+    if chunks.is_empty() {
+        tracing::warn!(target: "ragrep::ingest", "no chunks to ingest");
+        if source_filter.is_some() {
+            store::clear_index(&index_dir)?;
+        }
+        return Ok(ingest_stats(&docs, 0, start.elapsed().as_secs_f64()));
+    }
 
     // 5. Hash + diff vs cache
     tracing::info!(target: "ragrep::ingest", "step 3/4 embed: {} chunks", chunks.len());
@@ -118,19 +122,7 @@ pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<Ing
     store::save_index(&index_dir, &chunks, &bm25, &embeddings, embedder.dim())?;
     embed::cache::save(&cache, &index_dir)?;
 
-    let elapsed = start.elapsed().as_secs_f64();
-
-    let mut sources: BTreeMap<String, usize> = BTreeMap::new();
-    for d in &docs {
-        *sources.entry(d.source.clone()).or_insert(0) += 1;
-    }
-
-    let stats = IngestStats {
-        documents: docs.len(),
-        chunks: chunks.len(),
-        sources,
-        elapsed_s: elapsed,
-    };
+    let stats = ingest_stats(&docs, chunks.len(), start.elapsed().as_secs_f64());
 
     tracing::info!(
         target: "ragrep::ingest",
@@ -142,4 +134,103 @@ pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<Ing
         stats.elapsed_s
     );
     Ok(stats)
+}
+
+fn ingest_stats(docs: &[Document], chunks: usize, elapsed_s: f64) -> IngestStats {
+    let mut sources: BTreeMap<String, usize> = BTreeMap::new();
+    for doc in docs {
+        *sources.entry(doc.source.clone()).or_insert(0) += 1;
+    }
+
+    IngestStats {
+        documents: docs.len(),
+        chunks,
+        sources,
+        elapsed_s,
+    }
+}
+
+fn runtime_chunks(
+    index_dir: &std::path::Path,
+    source_filter: Option<&str>,
+    replacement: Vec<Chunk>,
+) -> Result<Vec<Chunk>> {
+    let Some(source) = source_filter else {
+        return Ok(replacement);
+    };
+
+    let existing = if store::chunks_exist(index_dir) {
+        store::load_chunks(index_dir)?
+    } else {
+        Vec::new()
+    };
+    let preserved_count = existing
+        .iter()
+        .filter(|chunk| chunk.source != source)
+        .count();
+    let chunks = replace_source_chunks(existing, replacement, source);
+    tracing::info!(
+        target: "ragrep::ingest",
+        "source-scoped publish: replaced source={source}, preserved {} existing chunks, runtime now has {} chunks",
+        preserved_count,
+        chunks.len()
+    );
+    Ok(chunks)
+}
+
+fn replace_source_chunks(
+    existing: Vec<Chunk>,
+    replacement: Vec<Chunk>,
+    source: &str,
+) -> Vec<Chunk> {
+    let mut chunks: Vec<Chunk> = existing
+        .into_iter()
+        .filter(|chunk| chunk.source != source)
+        .collect();
+    chunks.extend(replacement);
+    chunks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chunk(id: &str, source: &str) -> Chunk {
+        Chunk {
+            id: id.to_string(),
+            doc_id: id.to_string(),
+            content: format!("{id} content"),
+            title: format!("{id} title"),
+            source: source.to_string(),
+            metadata: Default::default(),
+        }
+    }
+
+    #[test]
+    fn source_scoped_chunks_replace_only_selected_source() {
+        let existing = vec![
+            chunk("old-freshdesk", "freshdesk"),
+            chunk("youtube-video", "youtube"),
+            chunk("git-change", "git"),
+        ];
+        let replacement = vec![chunk("new-freshdesk", "freshdesk")];
+
+        let chunks = replace_source_chunks(existing, replacement, "freshdesk");
+
+        let ids: Vec<&str> = chunks.iter().map(|chunk| chunk.id.as_str()).collect();
+        assert_eq!(ids, vec!["youtube-video", "git-change", "new-freshdesk"]);
+    }
+
+    #[test]
+    fn source_scoped_chunks_can_clear_a_source() {
+        let existing = vec![
+            chunk("old-freshdesk", "freshdesk"),
+            chunk("youtube-video", "youtube"),
+        ];
+
+        let chunks = replace_source_chunks(existing, Vec::new(), "freshdesk");
+
+        let ids: Vec<&str> = chunks.iter().map(|chunk| chunk.id.as_str()).collect();
+        assert_eq!(ids, vec!["youtube-video"]);
+    }
 }

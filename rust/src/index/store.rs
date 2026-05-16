@@ -123,6 +123,21 @@ pub fn save_embeddings(index_dir: &Path, embeddings: &[Vec<f32>], dim: usize) ->
     std::fs::rename(&tmp, &path).with_context(|| format!("renaming {}", tmp.display()))
 }
 
+pub fn clear_index(index_dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(index_dir)
+        .with_context(|| format!("creating {}", index_dir.display()))?;
+    let _lock = lock(index_dir, LockMode::Exclusive)?;
+    for name in [FILE_CHUNKS, FILE_BM25, FILE_EMBEDDINGS] {
+        let path = index_dir.join(name);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err).with_context(|| format!("removing {}", path.display())),
+        }
+    }
+    Ok(())
+}
+
 fn publish_stage(index_dir: &Path, stage_dir: &Path) -> Result<()> {
     let _lock = lock(index_dir, LockMode::Exclusive)?;
     for name in [FILE_CHUNKS, FILE_BM25, FILE_EMBEDDINGS] {
@@ -287,5 +302,19 @@ mod tests {
                 .len(),
             8
         );
+    }
+
+    #[test]
+    fn clear_index_removes_runtime_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let chunks = vec![chunk("a", "freshdesk", "alpha")];
+        let bm25 = Bm25::build(chunks.iter().map(|c| c.content.as_str()));
+        save_index(dir.path(), &chunks, &bm25, &[vec![1.0, 0.0]], 2).unwrap();
+
+        clear_index(dir.path()).unwrap();
+
+        assert!(!chunks_path(dir.path()).exists());
+        assert!(!bm25_path(dir.path()).exists());
+        assert!(!embeddings_path(dir.path()).exists());
     }
 }
