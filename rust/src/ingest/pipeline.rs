@@ -49,11 +49,13 @@ pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<Ing
 
     // 3. Normalize
     tracing::info!(target: "ragrep::ingest", "step 1/4 normalize: reading {}", raw_dir.display());
-    let mut docs = normalize::normalize_all(&raw_dir)?;
-    if let Some(s) = source_filter {
-        docs.retain(|d| d.source == s);
+    let docs = if let Some(s) = source_filter {
+        let docs = normalize::normalize_source(&raw_dir, s)?;
         tracing::info!(target: "ragrep::ingest", "filtered to {} documents (source={s})", docs.len());
-    }
+        docs
+    } else {
+        normalize::normalize_all(&raw_dir)?
+    };
 
     // 4. Chunk
     tracing::info!(target: "ragrep::ingest", "step 2/4 chunk: {} docs", docs.len());

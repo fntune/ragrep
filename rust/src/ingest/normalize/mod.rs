@@ -219,9 +219,36 @@ pub fn normalize_all(raw_dir: &Path) -> Result<Vec<Document>> {
     docs.extend(bitbucket::normalize(raw_dir)?);
     docs.extend(code::normalize(raw_dir)?);
 
+    Ok(dedup(docs))
+}
+
+pub fn normalize_source(raw_dir: &Path, source: &str) -> Result<Vec<Document>> {
+    let docs = match source {
+        "slack" => {
+            let users = load_users(&raw_dir.join("users.json"))?;
+            let channels = load_channels(&raw_dir.join("channels.json"))?;
+            slack::normalize(raw_dir, &users, &channels)?
+        }
+        "atlassian" => atlassian::normalize(raw_dir)?,
+        "gdrive" => gdrive::normalize(raw_dir)?,
+        "git" => git::normalize(raw_dir)?,
+        "file" => file::normalize(raw_dir)?,
+        "bookmark" => bookmark::normalize(raw_dir)?,
+        "pin" => {
+            let users = load_users(&raw_dir.join("users.json"))?;
+            pin::normalize(raw_dir, &users)?
+        }
+        "bitbucket" => bitbucket::normalize(raw_dir)?,
+        "code" => code::normalize(raw_dir)?,
+        _ => Vec::new(),
+    };
+    Ok(dedup(docs))
+}
+
+fn dedup(mut docs: Vec<Document>) -> Vec<Document> {
     let mut seen: HashSet<String> = HashSet::with_capacity(docs.len());
     docs.retain(|d| seen.insert(d.id.clone()));
-    Ok(docs)
+    docs
 }
 
 #[cfg(test)]
@@ -278,5 +305,22 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(a.len(), 12);
         assert_ne!(short_hash("hello"), short_hash("world"));
+    }
+
+    #[test]
+    fn normalize_source_ignores_unrelated_raw_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("git.jsonl"), "{not json").unwrap();
+        std::fs::write(
+            dir.path().join("bookmarks.jsonl"),
+            r#"{"title":"Docs","link":"https://example.com","channel_name":"kb"}"#,
+        )
+        .unwrap();
+
+        let docs = normalize_source(dir.path(), "bookmark").unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].source, "bookmark");
+        assert_eq!(docs[0].title, "Docs");
     }
 }
