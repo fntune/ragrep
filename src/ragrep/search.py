@@ -4,6 +4,8 @@ import logging
 import re
 from datetime import date, timedelta
 
+from ragrep.query.filter import MetadataFilter, matches_filters
+
 log = logging.getLogger(__name__)
 
 
@@ -21,39 +23,6 @@ def parse_date(s: str) -> str:
         return (date.today() - delta).isoformat()
     date.fromisoformat(s)  # validate
     return s
-
-
-def parse_filters(raw: list[str]) -> dict[str, str]:
-    """Parse 'key=value' strings into a dict."""
-    filters: dict[str, str] = {}
-    for item in raw:
-        if "=" not in item:
-            raise ValueError(f"Invalid filter: {item!r} (expected key=value)")
-        k, _, v = item.partition("=")
-        filters[k.strip()] = v.strip()
-    return filters
-
-
-def matches_filters(
-    metadata: dict,
-    filters: dict[str, str],
-    after: str | None = None,
-    before: str | None = None,
-) -> bool:
-    """Check if metadata matches all key=value filters + temporal range."""
-    for key, val in filters.items():
-        chunk_val = metadata.get(key)
-        if chunk_val is None or val.lower() not in str(chunk_val).lower():
-            return False
-    if after or before:
-        date_str = str(metadata.get("date", ""))[:10]
-        if not date_str or len(date_str) < 10:
-            return False
-        if after and date_str < after:
-            return False
-        if before and date_str >= before:
-            return False
-    return True
 
 
 def snippet(content: str, length: int, term: str = "") -> str:
@@ -108,7 +77,7 @@ def search_grep(
     term: str,
     source: str | None = None,
     n: int = 5,
-    filters: dict[str, str] | None = None,
+    filters: MetadataFilter | None = None,
     after: str | None = None,
     before: str | None = None,
     context: int = 0,
@@ -152,7 +121,7 @@ def search_semantic(
     term: str,
     source: str | None = None,
     n: int = 5,
-    filters: dict[str, str] | None = None,
+    filters: MetadataFilter | None = None,
     after: str | None = None,
     before: str | None = None,
     context: int = 0,
@@ -193,7 +162,7 @@ def search_hybrid(
     term: str,
     source: str | None = None,
     n: int = 5,
-    filters: dict[str, str] | None = None,
+    filters: MetadataFilter | None = None,
     after: str | None = None,
     before: str | None = None,
     context: int = 0,

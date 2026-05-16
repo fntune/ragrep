@@ -232,7 +232,7 @@ def test_http_search_handler_validates_filters(monkeypatch) -> None:
     response = asyncio.run(server.search(q="auth", filter="not-a-filter"))
 
     assert response.status_code == 400
-    assert response.content == {"error": "Invalid filter: 'not-a-filter' (expected key=value)"}
+    assert response.content == {"error": "Invalid filter: 'not-a-filter' (expected key=value or JSON object)"}
 
 
 def test_http_search_handler_passes_search_contract(monkeypatch) -> None:

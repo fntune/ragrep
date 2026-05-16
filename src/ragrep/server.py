@@ -129,13 +129,15 @@ async def search(
     metadata: bool = Query(False, description="Include metadata"),
 ):
     """Search the ragrep index."""
-    from ragrep.search import parse_date, parse_filters, search_grep, search_hybrid, search_semantic
+    from ragrep.query.filter import parse_filters
+    from ragrep.search import parse_date, search_grep, search_hybrid, search_semantic
 
     # Parse filters
     filters = None
     if filter:
         try:
-            filters = parse_filters(filter.split(","))
+            raw_filters = [filter] if filter.lstrip().startswith("{") else filter.split(",")
+            filters = parse_filters(raw_filters)
         except ValueError as e:
             return JSONResponse(status_code=400, content={"error": str(e)})
 

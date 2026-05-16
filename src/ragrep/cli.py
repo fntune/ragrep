@@ -369,58 +369,6 @@ class _Spinner:
 
 
 # ---------------------------------------------------------------------------
-# Filter helpers
-# ---------------------------------------------------------------------------
-
-def _parse_date(s: str) -> str:
-    """Parse 'YYYY-MM-DD' or relative '3m', '2w', '90d', '1y' to YYYY-MM-DD."""
-    import re
-    from datetime import date, timedelta
-
-    m = re.fullmatch(r"(\d+)([dwmy])", s.strip().lower())
-    if m:
-        n, unit = int(m.group(1)), m.group(2)
-        delta = {"d": timedelta(days=n), "w": timedelta(weeks=n),
-                 "m": timedelta(days=n * 30), "y": timedelta(days=n * 365)}[unit]
-        return (date.today() - delta).isoformat()
-    date.fromisoformat(s)  # validate
-    return s
-
-
-def _parse_filters(raw: list[str]) -> dict[str, str]:
-    """Parse 'key=value' strings into a dict."""
-    filters: dict[str, str] = {}
-    for item in raw:
-        if "=" not in item:
-            raise SystemExit(f"Invalid filter: {item!r} (expected key=value)")
-        k, _, v = item.partition("=")
-        filters[k.strip()] = v.strip()
-    return filters
-
-
-def _matches_filters(
-    metadata: dict,
-    filters: dict[str, str],
-    after: str | None = None,
-    before: str | None = None,
-) -> bool:
-    """Check if metadata matches all key=value filters + temporal range."""
-    for key, val in filters.items():
-        chunk_val = metadata.get(key)
-        if chunk_val is None or val.lower() not in str(chunk_val).lower():
-            return False
-    if after or before:
-        date_str = str(metadata.get("date", ""))[:10]
-        if not date_str or len(date_str) < 10:
-            return False
-        if after and date_str < after:
-            return False
-        if before and date_str >= before:
-            return False
-    return True
-
-
-# ---------------------------------------------------------------------------
 # Search functions
 # ---------------------------------------------------------------------------
 
@@ -549,7 +497,7 @@ def _search_and_print(
 # ragrep entry point
 # ---------------------------------------------------------------------------
 
-def _query_server(server_url: str, args: argparse.Namespace, filters: dict[str, str] | None, after: str | None, before: str | None) -> None:
+def _query_server(server_url: str, args: argparse.Namespace, filters: dict[str, object] | None, after: str | None, before: str | None) -> None:
     """Proxy search to the ragrep HTTP server."""
     import json
     import sys
@@ -561,7 +509,10 @@ def _query_server(server_url: str, args: argparse.Namespace, filters: dict[str, 
     if args.source:
         params["source"] = args.source
     if filters:
-        params["filter"] = ",".join(f"{k}={v}" for k, v in filters.items())
+        if "$or" in filters:
+            params["filter"] = json.dumps(filters)
+        else:
+            params["filter"] = ",".join(f"{k}={v}" for k, v in filters.items())
     if after:
         params["after"] = after
     if before:
@@ -730,7 +681,8 @@ def grep() -> None:
         args.context = 0
 
     # Parse filters and dates
-    from ragrep.search import parse_date, parse_filters
+    from ragrep.query.filter import parse_filters
+    from ragrep.search import parse_date
 
     filters = parse_filters(args.filter) if args.filter else None
     try:

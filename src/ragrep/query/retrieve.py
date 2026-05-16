@@ -7,17 +7,9 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 
 from ragrep.models import Chunk, SearchResult
+from ragrep.query.filter import MetadataFilter, matches_filters
 
 log = logging.getLogger(__name__)
-
-
-def _matches_metadata(metadata: dict, filters: dict[str, str]) -> bool:
-    """Check all filters match (case-insensitive substring)."""
-    for key, val in filters.items():
-        chunk_val = metadata.get(key)
-        if chunk_val is None or val.lower() not in str(chunk_val).lower():
-            return False
-    return True
 
 
 def dense_search(
@@ -26,10 +18,9 @@ def dense_search(
     chunks: list[Chunk],
     top_k: int,
     source_filter: str | None = None,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[tuple[int, float]]:
     """Dense vector search via FAISS. Returns (chunk_index, score) pairs."""
-    filtering = source_filter or metadata_filter
     fetch_k = top_k * 5 if metadata_filter else (top_k * 3 if source_filter else top_k)
     scores, indices = faiss_index.search(query_embedding, fetch_k)
 
@@ -40,7 +31,7 @@ def dense_search(
         chunk = chunks[idx]
         if source_filter and chunk.source != source_filter:
             continue
-        if metadata_filter and not _matches_metadata(chunk.metadata, metadata_filter):
+        if metadata_filter and not matches_filters(chunk.metadata, metadata_filter):
             continue
         results.append((int(idx), float(score)))
         if len(results) >= top_k:
@@ -55,7 +46,7 @@ def bm25_search(
     chunks: list[Chunk],
     top_k: int,
     source_filter: str | None = None,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[tuple[int, float]]:
     """Sparse BM25 search. Returns (chunk_index, score) pairs."""
     tokens = query.lower().split()
@@ -65,7 +56,7 @@ def bm25_search(
         for i, chunk in enumerate(chunks):
             if source_filter and chunk.source != source_filter:
                 scores[i] = 0.0
-            elif metadata_filter and not _matches_metadata(chunk.metadata, metadata_filter):
+            elif metadata_filter and not matches_filters(chunk.metadata, metadata_filter):
                 scores[i] = 0.0
 
     top_indices = np.argsort(scores)[::-1][:top_k]
@@ -147,7 +138,7 @@ def retrieve_multi(
     top_k_final: int = 20,
     rrf_k: int = 60,
     source_filter: str | None = None,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[SearchResult]:
     """Multi-model hybrid retrieval with generalized RRF fusion."""
     ranked_lists: list[tuple[str, list[tuple[int, float]]]] = []
@@ -195,7 +186,7 @@ def retrieve(
     top_k_final: int = 20,
     rrf_k: int = 60,
     source_filter: str | None = None,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[SearchResult]:
     """Hybrid retrieval with RRF fusion."""
     dense_results = dense_search(query_embedding, faiss_index, chunks, top_k_dense, source_filter, metadata_filter)
