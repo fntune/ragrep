@@ -22,10 +22,12 @@ pub mod bitbucket;
 pub mod bookmark;
 pub mod code;
 pub mod file;
+pub mod freshdesk;
 pub mod gdrive;
 pub mod git;
 pub mod pin;
 pub mod slack;
+pub mod youtube;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UserInfo {
@@ -218,6 +220,8 @@ pub fn normalize_all(raw_dir: &Path) -> Result<Vec<Document>> {
     docs.extend(pin::normalize(raw_dir, &users)?);
     docs.extend(bitbucket::normalize(raw_dir)?);
     docs.extend(code::normalize(raw_dir)?);
+    docs.extend(freshdesk::normalize(raw_dir)?);
+    docs.extend(youtube::normalize(raw_dir)?);
 
     Ok(dedup(docs))
 }
@@ -240,6 +244,8 @@ pub fn normalize_source(raw_dir: &Path, source: &str) -> Result<Vec<Document>> {
         }
         "bitbucket" => bitbucket::normalize(raw_dir)?,
         "code" => code::normalize(raw_dir)?,
+        "freshdesk" => freshdesk::normalize(raw_dir)?,
+        "youtube" => youtube::normalize(raw_dir)?,
         _ => Vec::new(),
     };
     Ok(dedup(docs))

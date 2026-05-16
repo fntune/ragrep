@@ -48,6 +48,8 @@ Sync and admin behavior:
   preserves the other sources already in the runtime index.
 - `/knowledge/search` returns the article and video shapes consumed by
   `support-chatbot`, backed by the current ragrep search engine.
+- `freshdesk.jsonl` and `youtube.jsonl` are first-class raw record inputs for
+  support article and video indexing.
 
 ## Remaining Ragrep Gaps
 
@@ -61,7 +63,7 @@ Sync and admin behavior:
 - [x] Atomic runtime index publication.
 - [x] Source-scoped ingest that preserves other sources.
 - [x] Support knowledge result contract.
-- [ ] Record sync commands for support sources.
+- [ ] Record write endpoints for support sources.
    Add a support-source ingestion path that writes Freshdesk and YouTube raw
    records with stable IDs and metadata, then invokes source-scoped ingest. Do
    not add a second vector-store abstraction.
@@ -76,6 +78,6 @@ Sync and admin behavior:
 
 ## Next Task
 
-Add record sync commands for support sources. They should write Freshdesk and
+Add record write endpoints for support sources. They should write Freshdesk and
 YouTube records into ragrep-owned raw data, then call source-scoped ingest so
 the support application does not need filesystem access to mutate the index.

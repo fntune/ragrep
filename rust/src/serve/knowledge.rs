@@ -193,7 +193,7 @@ fn article_filter(q: &KnowledgeQuery) -> Option<String> {
 
 fn article(hit: &query::Hit, article_base_url: Option<&str>) -> Article {
     let result = &hit.result;
-    let id = record_id(&result.chunk_id);
+    let id = meta_str(result, "article_id").unwrap_or_else(|| support_id(result));
     Article {
         id: id.clone(),
         title: result.title.clone(),
@@ -208,7 +208,7 @@ fn article(hit: &query::Hit, article_base_url: Option<&str>) -> Article {
 
 fn video(hit: &query::Hit) -> Video {
     let result = &hit.result;
-    let video_id = record_id(&result.chunk_id);
+    let video_id = meta_str(result, "video_id").unwrap_or_else(|| support_id(result));
     Video {
         video_id: video_id.clone(),
         title: meta_str(result, "title").unwrap_or_else(|| result.title.clone()),
@@ -218,6 +218,12 @@ fn video(hit: &query::Hit) -> Video {
         thumbnail_url: meta_str(result, "thumbnail_url").unwrap_or_default(),
         score: score(result),
     }
+}
+
+fn support_id(result: &SearchResult) -> String {
+    let id = record_id(&result.chunk_id);
+    let prefix = format!("{}:", result.source);
+    id.strip_prefix(&prefix).unwrap_or(&id).to_string()
 }
 
 fn record_id(chunk_id: &str) -> String {
@@ -306,11 +312,12 @@ mod tests {
     #[test]
     fn article_uses_record_id_and_support_fields() {
         let mut metadata = BTreeMap::new();
+        metadata.insert("article_id".to_string(), MetaValue::Str("123".to_string()));
         metadata.insert(
             "updated_at".to_string(),
             MetaValue::Str("2026-05-16".to_string()),
         );
-        let hit = hit("123:0", "freshdesk", metadata);
+        let hit = hit("freshdesk:123:0", "freshdesk", metadata);
 
         let article = article(&hit, Some("https://support.example/articles/"));
 
@@ -324,6 +331,7 @@ mod tests {
     #[test]
     fn video_uses_metadata_contract() {
         let mut metadata = BTreeMap::new();
+        metadata.insert("video_id".to_string(), MetaValue::Str("v1".to_string()));
         metadata.insert(
             "title".to_string(),
             MetaValue::Str("Video Title".to_string()),
@@ -340,11 +348,11 @@ mod tests {
             "thumbnail_url".to_string(),
             MetaValue::Str("https://img.example/v1.jpg".to_string()),
         );
-        let hit = hit("video-1:0", "youtube", metadata);
+        let hit = hit("youtube:v1:0", "youtube", metadata);
 
         let video = video(&hit);
 
-        assert_eq!(video.video_id, "video-1");
+        assert_eq!(video.video_id, "v1");
         assert_eq!(video.title, "Video Title");
         assert_eq!(video.description, "Video description");
         assert_eq!(video.video_url, "https://youtu.be/v1");

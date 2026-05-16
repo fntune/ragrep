@@ -23,7 +23,7 @@ pub struct Chunk {
     pub metadata: BTreeMap<String, MetaValue>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MetaValue {
     Str(String),
