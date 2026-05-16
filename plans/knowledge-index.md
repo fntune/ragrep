@@ -5,7 +5,7 @@ This tasklist groups the Pinecone replacement work into PR-sized chunks. Each ch
 ## Ragrep
 
 - [x] CLI contract: make the installed `ragrep` command support both direct search and the documented pipeline commands.
-- [ ] Search contract tests: cover grep, semantic, hybrid formatting, metadata filters, dates, and HTTP search responses without requiring external model calls.
+- [x] Search contract tests: cover grep, semantic, hybrid formatting, metadata filters, dates, and HTTP search responses without requiring external model calls.
 - [ ] Metadata filters: replace substring-only flat filters with a small query contract that supports exact values, `$or`, and typed metadata.
 - [ ] Collection API: add article/video collection operations for upsert, search, fetch metadata by ids, list ids by metadata, delete, count, and clear.
 - [ ] Mutable persistence: define how FAISS/BM25/chunks update safely after record changes, including compaction or rebuild triggers.
