@@ -6,6 +6,9 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+_PIPELINE_COMMANDS = frozenset({"scrape", "ingest", "query", "stats", "eval", "inspect"})
+_PIPELINE_GLOBAL_OPTIONS = frozenset({"--config", "--log-level"})
+
 
 def setup_logging(level: str) -> None:
     logging.basicConfig(
@@ -694,7 +697,10 @@ def grep() -> None:
     parser = argparse.ArgumentParser(
         prog="ragrep",
         description="Search RAG chunks",
-        epilog="modes: grep (substring), semantic (FAISS dense), hybrid (FAISS+BM25+rerank, default)",
+        epilog=(
+            "modes: grep (substring), semantic (FAISS dense), hybrid (FAISS+BM25+rerank, default). "
+            "pipeline commands: scrape, ingest, query, stats, eval, inspect."
+        ),
     )
     parser.add_argument("term", help="Search string")
     parser.add_argument("-n", type=int, default=5, help="Number of results (default: 5)")
@@ -773,5 +779,38 @@ def grep() -> None:
     print(f"\n({wall:.2f}s wall, {cpu:.2f}s cpu)", file=sys.stderr)
 
 
+def _is_pipeline_invocation(argv: list[str]) -> bool:
+    """Return True when argv targets the scrape/ingest/query command surface."""
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in _PIPELINE_COMMANDS:
+            return True
+        if arg == "--":
+            return False
+        if arg in _PIPELINE_GLOBAL_OPTIONS:
+            i += 2
+            continue
+        if any(arg.startswith(f"{option}=") for option in _PIPELINE_GLOBAL_OPTIONS):
+            i += 1
+            continue
+        return False
+    return False
+
+
+def entrypoint() -> None:
+    """Installed CLI entry point.
+
+    `ragrep "term"` is the fast search surface. `ragrep scrape|ingest|...`
+    remains the pipeline surface documented by the README and Makefile.
+    """
+    import sys
+
+    if _is_pipeline_invocation(sys.argv[1:]):
+        main()
+        return
+    grep()
+
+
 if __name__ == "__main__":
-    main()
+    entrypoint()

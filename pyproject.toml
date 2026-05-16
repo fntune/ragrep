@@ -69,7 +69,7 @@ extract = [
 ]
 
 [project.scripts]
-ragrep = "ragrep.cli:grep"
+ragrep = "ragrep.cli:entrypoint"
 
 [build-system]
 requires = ["hatchling"]
