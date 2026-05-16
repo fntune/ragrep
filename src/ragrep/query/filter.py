@@ -3,7 +3,8 @@
 import json
 import re
 
-FilterScalar = str | int | float | bool
+from ragrep.models import MetadataValue
+
 MetadataFilter = dict[str, object]
 
 
@@ -80,7 +81,7 @@ def _matches_scalar(actual: object, expected: object) -> bool:
     return str(actual).casefold() == str(expected).casefold()
 
 
-def _parse_scalar(value: str) -> FilterScalar:
+def _parse_scalar(value: str) -> MetadataValue:
     lower = value.casefold()
     if lower == "true":
         return True

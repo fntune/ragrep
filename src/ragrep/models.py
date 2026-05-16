@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+MetadataValue = str | int | float | bool
+
 
 @dataclass(frozen=True)
 class Document:
@@ -11,7 +13,7 @@ class Document:
     source: str  # slack, atlassian, gdrive, git, file, bookmark, pin
     content: str
     title: str
-    metadata: dict[str, str | int | float] = field(default_factory=dict)
+    metadata: dict[str, MetadataValue] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -23,7 +25,7 @@ class Chunk:
     content: str
     title: str
     source: str
-    metadata: dict[str, str | int | float] = field(default_factory=dict)
+    metadata: dict[str, MetadataValue] = field(default_factory=dict)
 
 
 @dataclass
@@ -34,7 +36,7 @@ class SearchResult:
     content: str
     title: str
     source: str
-    metadata: dict[str, str | int | float]
+    metadata: dict[str, MetadataValue]
     dense_score: float = 0.0
     bm25_score: float = 0.0
     rrf_score: float = 0.0
