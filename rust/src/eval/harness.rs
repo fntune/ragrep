@@ -53,12 +53,10 @@ pub fn evaluate(config: &Config, output_path: Option<&Path>) -> Result<EvalSumma
 
     eprintln!("Loading index from {}", index_dir.display());
     let embedder = embed::make(&config.embedding.provider, &config.embedding.model_name)?;
-    let chunks = store::load_chunks(&index_dir)?;
-    let flat = store::load_flat(&index_dir, embedder.dim())?;
-    let bm25 = store::load_bm25(&index_dir)?;
+    let runtime = store::load_runtime(&index_dir, embedder.dim())?;
 
-    eprintln!("Building entity graph from {} chunks", chunks.len());
-    let graph = EntityGraph::build(&chunks);
+    eprintln!("Building entity graph from {} chunks", runtime.chunks.len());
+    let graph = EntityGraph::build(&runtime.chunks);
     let cross_count = graph.cross_source_entities(2).len();
     eprintln!("Found {cross_count} cross-source entities");
 
@@ -83,9 +81,9 @@ pub fn evaluate(config: &Config, output_path: Option<&Path>) -> Result<EvalSumma
         let result = eval_case(
             case,
             embedder.as_ref(),
-            &flat,
-            &bm25,
-            &chunks,
+            &runtime.flat,
+            &runtime.bm25,
+            &runtime.chunks,
             rc.top_k_dense,
             rc.top_k_bm25,
             rc.rrf_k,

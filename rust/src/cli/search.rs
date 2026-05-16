@@ -327,8 +327,7 @@ fn run_semantic(
     }
 
     let embedder = embed::make(&cfg.embedding.provider, &cfg.embedding.model_name)?;
-    let chunks = store::load_chunks(dir)?;
-    let flat = store::load_flat(dir, embedder.dim())?;
+    let runtime = store::load_runtime(dir, embedder.dim())?;
     let query_emb = embedder.embed_query(&args.term)?;
 
     let after = args
@@ -347,7 +346,14 @@ fn run_semantic(
         after: after.as_deref(),
         before: before.as_deref(),
     };
-    let result = query::semantic(&flat, &chunks, &args.term, &query_emb, &filt, args.n);
+    let result = query::semantic(
+        &runtime.flat,
+        &runtime.chunks,
+        &args.term,
+        &query_emb,
+        &filt,
+        args.n,
+    );
 
     if args.json {
         print_json(&result.query, "semantic", None, &result.hits, args)?;
@@ -367,9 +373,7 @@ fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchA
     }
 
     let embedder = embed::make(&cfg.embedding.provider, &cfg.embedding.model_name)?;
-    let chunks = store::load_chunks(dir)?;
-    let flat = store::load_flat(dir, embedder.dim())?;
-    let bm25_idx = store::load_bm25(dir)?;
+    let runtime = store::load_runtime(dir, embedder.dim())?;
     let query_emb = embedder.embed_query(&args.term)?;
 
     let after = args
@@ -383,9 +387,9 @@ fn run_hybrid(dir: &std::path::Path, cfg: &crate::config::Config, args: &SearchA
         .map(query::filters::parse_date)
         .transpose()?;
     let result = query::hybrid(
-        &flat,
-        &bm25_idx,
-        &chunks,
+        &runtime.flat,
+        &runtime.bm25,
+        &runtime.chunks,
         &args.term,
         &query_emb,
         query::HybridOpts {

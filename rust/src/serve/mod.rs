@@ -26,14 +26,12 @@ impl AppState {
     pub fn load(cfg: Config) -> Result<Self> {
         let dir = cfg.index_dir();
         let embedder = embed::make(&cfg.embedding.provider, &cfg.embedding.model_name)?;
-        let chunks = store::load_chunks(&dir)?;
-        let flat = store::load_flat(&dir, embedder.dim())?;
-        let bm25 = store::load_bm25(&dir)?;
+        let runtime = store::load_runtime(&dir, embedder.dim())?;
         Ok(Self {
             cfg,
-            chunks,
-            flat,
-            bm25,
+            chunks: runtime.chunks,
+            flat: runtime.flat,
+            bm25: runtime.bm25,
             embedder,
         })
     }

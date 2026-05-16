@@ -1,9 +1,6 @@
 //! Ingest orchestrator: scrape → normalize → chunk → embed → store.
 
 use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -14,7 +11,6 @@ use crate::index::{bm25::Bm25, store};
 use crate::ingest::{chunk, normalize};
 use crate::models::IngestStats;
 
-const EMBEDDINGS_FILE: &str = "embeddings.bin";
 const CHECKPOINT_FILE: &str = ".embed_checkpoint.bin";
 
 pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<IngestStats> {
@@ -118,10 +114,8 @@ pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<Ing
 
     // 8. Save chunks + BM25 + embeddings (atomic) + cache
     tracing::info!(target: "ragrep::ingest", "step 4/4 store: writing index files");
-    store::save_chunks(&index_dir, &chunks)?;
     let bm25 = Bm25::build(chunks.iter().map(|c| c.content.as_str()));
-    store::save_bm25(&index_dir, &bm25)?;
-    save_embeddings(&index_dir, &embeddings, embedder.dim())?;
+    store::save_index(&index_dir, &chunks, &bm25, &embeddings, embedder.dim())?;
     embed::cache::save(&cache, &index_dir)?;
 
     let elapsed = start.elapsed().as_secs_f64();
@@ -148,26 +142,4 @@ pub fn run(cfg: &Config, force: bool, source_filter: Option<&str>) -> Result<Ing
         stats.elapsed_s
     );
     Ok(stats)
-}
-
-fn embeddings_path(index_dir: &Path) -> PathBuf {
-    index_dir.join(EMBEDDINGS_FILE)
-}
-
-fn save_embeddings(index_dir: &Path, embeddings: &[Vec<f32>], dim: usize) -> Result<()> {
-    let final_path = embeddings_path(index_dir);
-    let tmp = final_path.with_extension("bin.tmp");
-    let file = File::create(&tmp).with_context(|| format!("creating {}", tmp.display()))?;
-    let mut w = BufWriter::new(file);
-    for v in embeddings {
-        if v.len() != dim {
-            anyhow::bail!("embedding dim mismatch: expected {dim}, got {}", v.len());
-        }
-        w.write_all(bytemuck::cast_slice(v))?;
-    }
-    w.flush()?;
-    drop(w);
-    std::fs::rename(&tmp, &final_path)
-        .with_context(|| format!("renaming {} → {}", tmp.display(), final_path.display()))?;
-    Ok(())
 }
