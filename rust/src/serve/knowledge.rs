@@ -1,17 +1,18 @@
-//! Support-oriented knowledge search contract.
+//! Support-oriented knowledge index contract.
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
-    extract::{Query, State},
+    extract::{Path as AxumPath, Query, State},
     http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::{search, AppState};
+use crate::ingest::{pipeline, support};
 use crate::models::{MetaValue, SearchResult};
 use crate::query;
 
@@ -88,6 +89,46 @@ pub struct YoutubeSearch {
     pub top_score: Option<f64>,
 }
 
+#[derive(Deserialize, Clone, Default)]
+pub struct RecordListQuery {
+    pub playlist_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RecordBatchRequest {
+    #[serde(default)]
+    pub upsert: Vec<Value>,
+    #[serde(default)]
+    pub delete: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct RecordListResponse {
+    pub source: &'static str,
+    pub count: usize,
+    pub records: Vec<Value>,
+}
+
+#[derive(Serialize)]
+pub struct RecordResponse {
+    pub source: &'static str,
+    pub id: String,
+    pub record: Value,
+}
+
+#[derive(Serialize)]
+pub struct RecordWriteResponse {
+    pub source: &'static str,
+    pub changed: bool,
+    pub upserted: usize,
+    pub deleted: usize,
+    pub unchanged: usize,
+    pub total_records: usize,
+    pub refresh_required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ingest: Option<crate::models::IngestStats>,
+}
+
 pub async fn handle(
     State(state): State<Arc<AppState>>,
     Query(q): Query<KnowledgeQuery>,
@@ -101,6 +142,97 @@ pub async fn handle(
         Ok(payload) => Ok(Json(payload)),
         Err(e) => Err(client_or_internal(e)),
     }
+}
+
+pub async fn list_records(
+    State(state): State<Arc<AppState>>,
+    AxumPath(source): AxumPath<String>,
+    Query(q): Query<RecordListQuery>,
+) -> Result<Json<RecordListResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let raw_dir = state.cfg.raw_dir();
+    let result = tokio::task::spawn_blocking(move || {
+        let source = support::Source::parse(&source)?;
+        let filter = support::ListFilter {
+            playlist_id: q.playlist_id,
+        };
+        let records = support::list(&raw_dir, source, &filter)?;
+        Ok(RecordListResponse {
+            source: source.as_str(),
+            count: records.len(),
+            records,
+        })
+    })
+    .await
+    .map_err(|e| internal(format!("join: {e}")))?;
+    result.map(Json).map_err(client_or_internal)
+}
+
+pub async fn get_record(
+    State(state): State<Arc<AppState>>,
+    AxumPath((source, id)): AxumPath<(String, String)>,
+) -> Result<Json<RecordResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let raw_dir = state.cfg.raw_dir();
+    let result = tokio::task::spawn_blocking(move || {
+        let source = support::Source::parse(&source)?;
+        let Some(record) = support::fetch(&raw_dir, source, &id)? else {
+            return Err(not_found_error(source, &id));
+        };
+        Ok(RecordResponse {
+            source: source.as_str(),
+            id,
+            record,
+        })
+    })
+    .await
+    .map_err(|e| internal(format!("join: {e}")))?;
+    result.map(Json).map_err(record_error)
+}
+
+pub async fn put_record(
+    State(state): State<Arc<AppState>>,
+    AxumPath((source, id)): AxumPath<(String, String)>,
+    Json(record): Json<Value>,
+) -> Result<Json<RecordWriteResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let cfg = state.cfg.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let source = support::Source::parse(&source)?;
+        let write = support::upsert(&cfg.raw_dir(), source, &id, record)?;
+        write_response(&cfg, source, write)
+    })
+    .await
+    .map_err(|e| internal(format!("join: {e}")))?;
+    result.map(Json).map_err(client_or_internal)
+}
+
+pub async fn delete_record(
+    State(state): State<Arc<AppState>>,
+    AxumPath((source, id)): AxumPath<(String, String)>,
+) -> Result<Json<RecordWriteResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let cfg = state.cfg.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let source = support::Source::parse(&source)?;
+        let write = support::delete(&cfg.raw_dir(), source, &id)?;
+        write_response(&cfg, source, write)
+    })
+    .await
+    .map_err(|e| internal(format!("join: {e}")))?;
+    result.map(Json).map_err(client_or_internal)
+}
+
+pub async fn batch_records(
+    State(state): State<Arc<AppState>>,
+    AxumPath(source): AxumPath<String>,
+    Json(request): Json<RecordBatchRequest>,
+) -> Result<Json<RecordWriteResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let cfg = state.cfg.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let source = support::Source::parse(&source)?;
+        let write = support::apply(&cfg.raw_dir(), source, request.upsert, request.delete)?;
+        write_response(&cfg, source, write)
+    })
+    .await
+    .map_err(|e| internal(format!("join: {e}")))?;
+    result.map(Json).map_err(client_or_internal)
 }
 
 fn do_search(state: &AppState, q: KnowledgeQuery) -> Result<KnowledgeResponse> {
@@ -147,6 +279,33 @@ fn do_search(state: &AppState, q: KnowledgeQuery) -> Result<KnowledgeResponse> {
         },
         message,
     })
+}
+
+fn write_response(
+    cfg: &crate::config::Config,
+    source: support::Source,
+    write: support::WriteResult,
+) -> Result<RecordWriteResponse> {
+    let ingest = if should_publish(&write) {
+        Some(pipeline::run(cfg, false, Some(source.as_str()))?)
+    } else {
+        None
+    };
+    let refresh_required = ingest.is_some();
+    Ok(RecordWriteResponse {
+        source: source.as_str(),
+        changed: write.changed,
+        upserted: write.upserted,
+        deleted: write.deleted,
+        unchanged: write.unchanged,
+        total_records: write.total_records,
+        refresh_required,
+        ingest,
+    })
+}
+
+fn should_publish(write: &support::WriteResult) -> bool {
+    write.upserted + write.deleted + write.unchanged > 0
 }
 
 fn search_query(
@@ -274,11 +433,27 @@ fn internal(msg: String) -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
+fn not_found_error(source: support::Source, id: &str) -> anyhow::Error {
+    anyhow::anyhow!("not found: {} record {}", source.as_str(), id)
+}
+
+fn record_error(e: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
+    let msg = format!("{e}");
+    if msg.starts_with("not found:") {
+        (StatusCode::NOT_FOUND, Json(json!({ "error": msg })))
+    } else {
+        client_or_internal(e)
+    }
+}
+
 fn client_or_internal(e: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
     let msg = format!("{e}");
     if msg.starts_with("invalid mode")
         || msg.contains("invalid filter")
         || msg.contains("invalid date")
+        || msg.starts_with("invalid support")
+        || msg.starts_with("invalid freshdesk")
+        || msg.starts_with("invalid youtube")
     {
         (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
     } else {
@@ -357,5 +532,18 @@ mod tests {
         assert_eq!(video.description, "Video description");
         assert_eq!(video.video_url, "https://youtu.be/v1");
         assert_eq!(video.thumbnail_url, "https://img.example/v1.jpg");
+    }
+
+    #[test]
+    fn write_retry_still_publishes_when_raw_record_is_unchanged() {
+        let write = support::WriteResult {
+            changed: false,
+            upserted: 0,
+            deleted: 0,
+            unchanged: 1,
+            total_records: 1,
+        };
+
+        assert!(should_publish(&write));
     }
 }

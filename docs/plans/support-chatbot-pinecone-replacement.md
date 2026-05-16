@@ -50,11 +50,12 @@ Sync and admin behavior:
   `support-chatbot`, backed by the current ragrep search engine.
 - `freshdesk.jsonl` and `youtube.jsonl` are first-class raw record inputs for
   support article and video indexing.
+- `/knowledge/records/{source}` and `/knowledge/records/{source}/{id}` own
+  Freshdesk and YouTube raw record list, fetch, upsert, delete, and batch-write
+  operations. Writes publish a source-scoped index generation.
 
 ## Remaining Ragrep Gaps
 
-- Ragrep has no first-class upsert/delete/list/fetch record API. The current
-  model is scrape raw files, normalize, ingest, and serve.
 - `ragrep serve` loads the index at startup. A production replacement needs a
   clear refresh story after sync publishes a new index.
 
@@ -63,7 +64,7 @@ Sync and admin behavior:
 - [x] Atomic runtime index publication.
 - [x] Source-scoped ingest that preserves other sources.
 - [x] Support knowledge result contract.
-- [ ] Record write endpoints for support sources.
+- [x] Record write endpoints for support sources.
    Add a support-source ingestion path that writes Freshdesk and YouTube raw
    records with stable IDs and metadata, then invokes source-scoped ingest. Do
    not add a second vector-store abstraction.
@@ -78,6 +79,6 @@ Sync and admin behavior:
 
 ## Next Task
 
-Add record write endpoints for support sources. They should write Freshdesk and
-YouTube records into ragrep-owned raw data, then call source-scoped ingest so
-the support application does not need filesystem access to mutate the index.
+Add the service refresh path. Record writes now publish the runtime index on
+disk, but the currently running server still serves the generation loaded at
+startup until a reload or restart occurs.

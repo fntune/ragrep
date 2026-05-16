@@ -19,7 +19,9 @@ pub fn normalize(raw_dir: &Path) -> Result<Vec<Document>> {
         let title = scalar_string(record.get("title"));
         let description = scalar_string(record.get("description"));
         let content = non_empty_string(record.get("content")).unwrap_or_else(|| {
-            if description.is_empty() {
+            if title.is_empty() {
+                description.clone()
+            } else if description.is_empty() {
                 title.clone()
             } else {
                 format!("{title}. {description}")

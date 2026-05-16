@@ -140,6 +140,31 @@ The Dockerfile builds the Rust binary and runs:
 ragrep serve --host 0.0.0.0 --port 8080
 ```
 
+### Support Knowledge Records
+
+Ragrep can own support-chatbot article and video records directly, backed by
+`data/raw/freshdesk.jsonl` and `data/raw/youtube.jsonl`:
+
+```bash
+curl "http://localhost:8321/knowledge/records/freshdesk"
+curl "http://localhost:8321/knowledge/records/youtube?playlist_id=PL123"
+curl "http://localhost:8321/knowledge/records/freshdesk/123"
+
+curl -X PUT "http://localhost:8321/knowledge/records/freshdesk/123" \
+  -H "content-type: application/json" \
+  -d '{"title":"KYC","content":"How KYC works","status":2,"updated_at":"2026-05-16T00:00:00Z"}'
+
+curl -X POST "http://localhost:8321/knowledge/records/youtube" \
+  -H "content-type: application/json" \
+  -d '{"upsert":[{"video_id":"v1","title":"Deposits","description":"How deposits work","playlist_id":"PL123"}],"delete":["old-video"]}'
+
+curl -X DELETE "http://localhost:8321/knowledge/records/freshdesk/123"
+```
+
+Write responses include `ingest` stats and `refresh_required`. Until the server
+refresh endpoint lands, restart `ragrep serve` after writes to serve the newly
+published index generation.
+
 ## Providers
 
 Embedding providers are HTTP-only in the Rust runtime:
