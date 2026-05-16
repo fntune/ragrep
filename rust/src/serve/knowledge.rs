@@ -124,9 +124,16 @@ pub struct RecordWriteResponse {
     pub deleted: usize,
     pub unchanged: usize,
     pub total_records: usize,
-    pub refresh_required: bool,
+    pub refreshed: bool,
+    pub runtime: super::RuntimeSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ingest: Option<crate::models::IngestStats>,
+}
+
+#[derive(Serialize)]
+pub struct ReloadResponse {
+    pub status: &'static str,
+    pub runtime: super::RuntimeSummary,
 }
 
 pub async fn handle(
@@ -142,6 +149,22 @@ pub async fn handle(
         Ok(payload) => Ok(Json(payload)),
         Err(e) => Err(client_or_internal(e)),
     }
+}
+
+pub async fn reload(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ReloadResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let state2 = Arc::clone(&state);
+    let result = tokio::task::spawn_blocking(move || {
+        let runtime = state2.reload_runtime()?;
+        Ok(ReloadResponse {
+            status: "ok",
+            runtime,
+        })
+    })
+    .await
+    .map_err(|e| internal(format!("join: {e}")))?;
+    result.map(Json).map_err(client_or_internal)
 }
 
 pub async fn list_records(
@@ -193,11 +216,11 @@ pub async fn put_record(
     AxumPath((source, id)): AxumPath<(String, String)>,
     Json(record): Json<Value>,
 ) -> Result<Json<RecordWriteResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let cfg = state.cfg.clone();
+    let state2 = Arc::clone(&state);
     let result = tokio::task::spawn_blocking(move || {
         let source = support::Source::parse(&source)?;
-        let write = support::upsert(&cfg.raw_dir(), source, &id, record)?;
-        write_response(&cfg, source, write)
+        let write = support::upsert(&state2.cfg.raw_dir(), source, &id, record)?;
+        write_response(&state2, source, write)
     })
     .await
     .map_err(|e| internal(format!("join: {e}")))?;
@@ -208,11 +231,11 @@ pub async fn delete_record(
     State(state): State<Arc<AppState>>,
     AxumPath((source, id)): AxumPath<(String, String)>,
 ) -> Result<Json<RecordWriteResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let cfg = state.cfg.clone();
+    let state2 = Arc::clone(&state);
     let result = tokio::task::spawn_blocking(move || {
         let source = support::Source::parse(&source)?;
-        let write = support::delete(&cfg.raw_dir(), source, &id)?;
-        write_response(&cfg, source, write)
+        let write = support::delete(&state2.cfg.raw_dir(), source, &id)?;
+        write_response(&state2, source, write)
     })
     .await
     .map_err(|e| internal(format!("join: {e}")))?;
@@ -224,11 +247,16 @@ pub async fn batch_records(
     AxumPath(source): AxumPath<String>,
     Json(request): Json<RecordBatchRequest>,
 ) -> Result<Json<RecordWriteResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let cfg = state.cfg.clone();
+    let state2 = Arc::clone(&state);
     let result = tokio::task::spawn_blocking(move || {
         let source = support::Source::parse(&source)?;
-        let write = support::apply(&cfg.raw_dir(), source, request.upsert, request.delete)?;
-        write_response(&cfg, source, write)
+        let write = support::apply(
+            &state2.cfg.raw_dir(),
+            source,
+            request.upsert,
+            request.delete,
+        )?;
+        write_response(&state2, source, write)
     })
     .await
     .map_err(|e| internal(format!("join: {e}")))?;
@@ -282,16 +310,17 @@ fn do_search(state: &AppState, q: KnowledgeQuery) -> Result<KnowledgeResponse> {
 }
 
 fn write_response(
-    cfg: &crate::config::Config,
+    state: &AppState,
     source: support::Source,
     write: support::WriteResult,
 ) -> Result<RecordWriteResponse> {
-    let ingest = if should_publish(&write) {
-        Some(pipeline::run(cfg, false, Some(source.as_str()))?)
+    let (ingest, refreshed, runtime) = if should_publish(&write) {
+        let ingest = pipeline::run(&state.cfg, false, Some(source.as_str()))?;
+        let runtime = state.reload_runtime()?;
+        (Some(ingest), true, runtime)
     } else {
-        None
+        (None, false, state.runtime_summary()?)
     };
-    let refresh_required = ingest.is_some();
     Ok(RecordWriteResponse {
         source: source.as_str(),
         changed: write.changed,
@@ -299,7 +328,8 @@ fn write_response(
         deleted: write.deleted,
         unchanged: write.unchanged,
         total_records: write.total_records,
-        refresh_required,
+        refreshed,
+        runtime,
         ingest,
     })
 }

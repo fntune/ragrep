@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use fs2::FileExt;
+use serde::Serialize;
 
 use crate::index::bm25::Bm25;
 use crate::index::flat::Flat;
@@ -19,6 +20,18 @@ pub struct RuntimeIndex {
     pub chunks: Vec<Chunk>,
     pub flat: Flat,
     pub bm25: Bm25,
+    pub generation: RuntimeGeneration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeGeneration {
+    pub id: String,
+    pub chunks_modified_ms: u64,
+    pub embeddings_modified_ms: u64,
+    pub bm25_modified_ms: u64,
+    pub chunks_bytes: u64,
+    pub embeddings_bytes: u64,
+    pub bm25_bytes: u64,
 }
 
 pub fn chunks_path(index_dir: &Path) -> PathBuf {
@@ -48,11 +61,18 @@ pub fn load_bm25(index_dir: &Path) -> Result<Bm25> {
 
 pub fn load_runtime(index_dir: &Path, dim: usize) -> Result<RuntimeIndex> {
     let _lock = lock(index_dir, LockMode::Shared)?;
+    let generation = read_generation(index_dir)?;
     Ok(RuntimeIndex {
         chunks: read_chunks(index_dir)?,
         flat: read_flat(index_dir, dim)?,
         bm25: read_bm25(index_dir)?,
+        generation,
     })
+}
+
+pub fn runtime_generation(index_dir: &Path) -> Result<RuntimeGeneration> {
+    let _lock = lock(index_dir, LockMode::Shared)?;
+    read_generation(index_dir)
 }
 
 fn read_chunks(index_dir: &Path) -> Result<Vec<Chunk>> {
@@ -74,6 +94,49 @@ fn read_bm25(index_dir: &Path) -> Result<Bm25> {
     let bm25: Bm25 = rmp_serde::from_read(BufReader::new(file))
         .with_context(|| format!("parsing {}", path.display()))?;
     Ok(bm25)
+}
+
+fn read_generation(index_dir: &Path) -> Result<RuntimeGeneration> {
+    let chunks = file_generation(&chunks_path(index_dir))?;
+    let embeddings = file_generation(&embeddings_path(index_dir))?;
+    let bm25 = file_generation(&bm25_path(index_dir))?;
+    let id = format!(
+        "{}-{}-{}-{}-{}-{}",
+        chunks.modified_ms,
+        embeddings.modified_ms,
+        bm25.modified_ms,
+        chunks.bytes,
+        embeddings.bytes,
+        bm25.bytes
+    );
+    Ok(RuntimeGeneration {
+        id,
+        chunks_modified_ms: chunks.modified_ms,
+        embeddings_modified_ms: embeddings.modified_ms,
+        bm25_modified_ms: bm25.modified_ms,
+        chunks_bytes: chunks.bytes,
+        embeddings_bytes: embeddings.bytes,
+        bm25_bytes: bm25.bytes,
+    })
+}
+
+struct FileGeneration {
+    modified_ms: u64,
+    bytes: u64,
+}
+
+fn file_generation(path: &Path) -> Result<FileGeneration> {
+    let metadata = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
+    let modified_ms = metadata
+        .modified()
+        .with_context(|| format!("reading modified time for {}", path.display()))?
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default();
+    Ok(FileGeneration {
+        modified_ms,
+        bytes: metadata.len(),
+    })
 }
 
 pub fn save_index(
@@ -274,6 +337,9 @@ mod tests {
         assert!(bm25_path(dir.path()).exists());
         assert!(embeddings_path(dir.path()).exists());
         assert_eq!(load_chunks(dir.path()).unwrap()[0].id, "a");
+        let generation = runtime_generation(dir.path()).unwrap();
+        assert!(!generation.id.is_empty());
+        assert_eq!(generation.embeddings_bytes, 8);
         assert_eq!(
             std::fs::metadata(embeddings_path(dir.path()))
                 .unwrap()

@@ -46,10 +46,16 @@ pub fn run(args: ServeArgs) -> Result<()> {
     );
     let auth_policy = serve::auth::Policy::from_env()?;
     let state = Arc::new(serve::AppState::load(cfg)?);
+    let summary = state.runtime_summary()?;
     tracing::info!(
         target: "ragrep::serve",
-        "ready: {} chunks, embedder={}/{} dim={}, auth={}",
-        state.chunks.len(),
+        "ready: {} chunks, generation={}, embedder={}/{} dim={}, auth={}",
+        summary.chunks,
+        summary
+            .generation
+            .as_ref()
+            .map(|generation| generation.id.as_str())
+            .unwrap_or("none"),
         state.embedder.provider(),
         state.embedder.model(),
         state.embedder.dim(),

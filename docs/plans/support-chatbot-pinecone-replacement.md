@@ -53,11 +53,14 @@ Sync and admin behavior:
 - `/knowledge/records/{source}` and `/knowledge/records/{source}/{id}` own
   Freshdesk and YouTube raw record list, fetch, upsert, delete, and batch-write
   operations. Writes publish a source-scoped index generation.
+- `ragrep serve` owns a reloadable runtime index. `/health` reports the loaded
+  chunk count and generation, `POST /knowledge/reload` reloads from disk, and
+  support record writes reload the server after successful ingest.
 
 ## Remaining Ragrep Gaps
 
-- `ragrep serve` loads the index at startup. A production replacement needs a
-  clear refresh story after sync publishes a new index.
+- Ragrep is ready to be called as the support knowledge index, but
+  `support-chatbot` still imports and configures Pinecone directly.
 
 ## Tasklist
 
@@ -68,7 +71,7 @@ Sync and admin behavior:
    Add a support-source ingestion path that writes Freshdesk and YouTube raw
    records with stable IDs and metadata, then invokes source-scoped ingest. Do
    not add a second vector-store abstraction.
-- [ ] Service refresh path.
+- [x] Service refresh path.
    Define and implement how `ragrep serve` observes a newly published index:
    explicit reload endpoint, signal, or process restart contract. Make health
    report the loaded index generation and chunk count.
@@ -79,6 +82,5 @@ Sync and admin behavior:
 
 ## Next Task
 
-Add the service refresh path. Record writes now publish the runtime index on
-disk, but the currently running server still serves the generation loaded at
-startup until a reload or restart occurs.
+Migrate `support-chatbot` behind a `KnowledgeIndex` boundary that calls ragrep
+for search, record sync, admin listing, deletion, and readiness.

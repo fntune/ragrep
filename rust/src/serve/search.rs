@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -107,11 +107,10 @@ pub fn execute(state: &AppState, q: &SearchQuery) -> Result<Output> {
         before: before.as_deref(),
     };
 
-    let cfg = &state.cfg;
-
     match q.mode.as_str() {
         "grep" => {
-            let r = query::grep(&state.chunks, &q.q, &filt, q.n);
+            let runtime = state.runtime()?;
+            let r = query::grep(&runtime.chunks, &q.q, &filt, q.n);
             Ok(Output {
                 query: r.query,
                 mode: "grep".to_string(),
@@ -120,8 +119,19 @@ pub fn execute(state: &AppState, q: &SearchQuery) -> Result<Output> {
             })
         }
         "semantic" => {
+            if state.runtime()?.chunks.is_empty() {
+                return Ok(empty_output(&q.q, "semantic", None));
+            }
             let emb = state.embedder.embed_query(&q.q)?;
-            let r = query::semantic(&state.flat, &state.chunks, &q.q, &emb, &filt, q.n);
+            let runtime = state.runtime()?;
+            if runtime.chunks.is_empty() {
+                return Ok(empty_output(&q.q, "semantic", None));
+            }
+            let flat = runtime
+                .flat
+                .as_ref()
+                .context("runtime index missing embeddings")?;
+            let r = query::semantic(flat, &runtime.chunks, &q.q, &emb, &filt, q.n);
             Ok(Output {
                 query: r.query,
                 mode: "semantic".to_string(),
@@ -130,7 +140,19 @@ pub fn execute(state: &AppState, q: &SearchQuery) -> Result<Output> {
             })
         }
         "hybrid" => {
+            if state.runtime()?.chunks.is_empty() {
+                return Ok(empty_output(&q.q, "hybrid", None));
+            }
             let emb = state.embedder.embed_query(&q.q)?;
+            let runtime = state.runtime()?;
+            if runtime.chunks.is_empty() {
+                return Ok(empty_output(&q.q, "hybrid", None));
+            }
+            let flat = runtime
+                .flat
+                .as_ref()
+                .context("runtime index missing embeddings")?;
+            let cfg = &state.cfg;
             let opts = query::HybridOpts {
                 n: q.n,
                 top_k_dense: cfg.retrieval.top_k_dense,
@@ -141,7 +163,7 @@ pub fn execute(state: &AppState, q: &SearchQuery) -> Result<Output> {
                 rerank_model: &cfg.reranker.model_name,
                 filters: filt,
             };
-            let r = query::hybrid(&state.flat, &state.bm25, &state.chunks, &q.q, &emb, opts)?;
+            let r = query::hybrid(flat, &runtime.bm25, &runtime.chunks, &q.q, &emb, opts)?;
             Ok(Output {
                 query: r.query,
                 mode: "hybrid".to_string(),
@@ -150,6 +172,15 @@ pub fn execute(state: &AppState, q: &SearchQuery) -> Result<Output> {
             })
         }
         m => bail!("invalid mode: {m}"),
+    }
+}
+
+fn empty_output(query: &str, mode: &str, total_matches: Option<usize>) -> Output {
+    Output {
+        query: query.to_string(),
+        mode: mode.to_string(),
+        total_matches,
+        hits: Vec::new(),
     }
 }
 
@@ -323,5 +354,14 @@ mod tests {
         let q = query("hybrid");
         assert_eq!(hybrid_score(0.0, &q), Some(0.0));
         assert_eq!(semantic_score(0.25, &q), None);
+    }
+
+    #[test]
+    fn empty_output_has_no_hits() {
+        let output = empty_output("kyc", "hybrid", None);
+
+        assert_eq!(output.query, "kyc");
+        assert_eq!(output.mode, "hybrid");
+        assert_eq!(output.hits.len(), 0);
     }
 }

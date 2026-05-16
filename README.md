@@ -120,6 +120,7 @@ ragrep serve --host 0.0.0.0 --port 8321
 curl "http://localhost:8321/health"
 curl "http://localhost:8321/search?q=auth+flow&mode=grep&n=5"
 curl "http://localhost:8321/knowledge/search?q=kyc&mode=grep&portal_id=80000083721"
+curl -X POST "http://localhost:8321/knowledge/reload"
 ```
 
 Server index resolution:
@@ -161,9 +162,11 @@ curl -X POST "http://localhost:8321/knowledge/records/youtube" \
 curl -X DELETE "http://localhost:8321/knowledge/records/freshdesk/123"
 ```
 
-Write responses include `ingest` stats and `refresh_required`. Until the server
-refresh endpoint lands, restart `ragrep serve` after writes to serve the newly
-published index generation.
+Write responses include `ingest` stats, `refreshed`, and the loaded `runtime`.
+Successful writes publish a source-scoped index generation and reload the
+running server before responding. Use `POST /knowledge/reload` when an external
+`ragrep ingest` process publishes index files while the server is already
+running. `/health` reports the loaded chunk count and generation.
 
 ## Providers
 
